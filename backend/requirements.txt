@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+feedparser
+beautifulsoup4
+requests
+python-multipart
+openai
+python-dotenv
+reportlab
+gTTS
