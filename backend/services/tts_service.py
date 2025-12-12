@@ -69,3 +69,52 @@ def _clean_text_for_speech(text: str) -> str:
     text = text.replace('! ', '!... ')
     
     return text.strip()
+
+
+def text_to_speech_openai(text: str, voice: str = 'alloy') -> bytes:
+    """
+    Convert text to speech using OpenAI TTS.
+    Uses high-quality neural voice.
+    
+    Available voices: alloy, echo, fable, onyx, nova, shimmer
+    Returns MP3 audio as bytes.
+    """
+    import os
+    from openai import OpenAI
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key or api_key == "sk-your-api-key-here":
+        print("[DEBUG] OpenAI API key not configured, falling back to gTTS")
+        return text_to_speech(text)
+    
+    # Clean the text
+    clean_text = _clean_text_for_speech(text)
+    
+    if not clean_text.strip():
+        clean_text = "No content available for audio."
+    
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        print(f"[DEBUG] Generating OpenAI TTS with voice: {voice}")
+        print(f"[DEBUG] Text length: {len(clean_text)} characters")
+        
+        response = client.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=clean_text
+        )
+        
+        # Get audio bytes
+        audio_bytes = response.content
+        
+        print(f"[DEBUG] OpenAI TTS generated: {len(audio_bytes)} bytes")
+        return audio_bytes
+        
+    except Exception as e:
+        print(f"OpenAI TTS Error: {e}")
+        print("[DEBUG] Falling back to gTTS")
+        return text_to_speech(text)

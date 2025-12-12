@@ -30,9 +30,34 @@ def read_root():
     return {"message": "Welcome to News Simplifier API"}
 
 @app.get("/news")
-def get_news():
-    news = fetch_news()
+def get_news(categories: str = None):
+    """
+    Get news articles, optionally filtered by categories.
+    
+    Args:
+        categories: Comma-separated list of category keys (e.g., "technology,business")
+    """
+    from services.news_fetcher import fetch_news_by_categories, RSS_FEEDS_BY_CATEGORY
+    
+    if categories:
+        category_list = [c.strip() for c in categories.split(",")]
+        news = fetch_news_by_categories(category_list)
+    else:
+        news = fetch_news()
+    
     return {"news": news}
+
+
+@app.get("/categories")
+def get_categories():
+    """Get available news categories."""
+    from services.news_fetcher import RSS_FEEDS_BY_CATEGORY
+    
+    categories = [
+        {"key": key, "name": info["name"], "emoji": info["emoji"]}
+        for key, info in RSS_FEEDS_BY_CATEGORY.items()
+    ]
+    return {"categories": categories}
 
 @app.post("/simplify")
 def simplify_news(request: SimplifyRequest):
@@ -91,3 +116,183 @@ def get_digest_audio():
         media_type="audio/mpeg",
         headers={"Content-Disposition": "attachment; filename=news_digest.mp3"}
     )
+
+
+class SummarizeRequest(BaseModel):
+    text: str
+
+
+@app.post("/summarize-combined")
+def summarize_combined(request: SummarizeRequest):
+    """Summarize combined news excerpts using GPT-4o-mini."""
+    from services.openai_service import summarize_combined_excerpts
+    
+    if not request.text:
+        raise HTTPException(status_code=400, detail="No text provided")
+    
+    summary = summarize_combined_excerpts(request.text)
+    
+    if summary is None:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured or error occurred")
+    
+    return {"summary": summary}
+
+
+@app.post("/summary/pdf")
+def get_summary_pdf(request: SummarizeRequest):
+    """Generate a PDF from summary text."""
+    from services.pdf_service import create_pdf
+    
+    if not request.text:
+        raise HTTPException(status_code=400, detail="No text provided")
+    
+    pdf_bytes = create_pdf(request.text, "AI News Summary")
+    
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=news_summary.pdf"}
+    )
+
+
+@app.post("/summary/audio")
+def get_summary_audio(request: SummarizeRequest):
+    """Generate audio from summary text using OpenAI TTS."""
+    from services.tts_service import text_to_speech_openai
+    
+    if not request.text:
+        raise HTTPException(status_code=400, detail="No text provided")
+    
+    audio_bytes = text_to_speech_openai(request.text, voice="nova")
+    
+    return StreamingResponse(
+        BytesIO(audio_bytes),
+        media_type="audio/mpeg",
+        headers={"Content-Disposition": "attachment; filename=news_summary.mp3"}
+    )
+
+
+class SendEmailRequest(BaseModel):
+    email: str
+    summary: str
+
+
+@app.post("/send-summary-email")
+def send_summary_email(request: SendEmailRequest):
+    """Send summary with PDF and audio attachments via SendGrid."""
+    from services.pdf_service import create_pdf
+    from services.tts_service import text_to_speech_openai
+    from services.sendgrid_service import send_summary_email as sg_send
+    
+    if not request.email:
+        raise HTTPException(status_code=400, detail="Email address required")
+    
+    if not request.summary:
+        raise HTTPException(status_code=400, detail="Summary text required")
+    
+    try:
+        # Generate PDF
+        print(f"[EMAIL] Generating PDF for {request.email}...")
+        pdf_bytes = create_pdf(request.summary, "AI News Summary")
+        
+        # Generate audio
+        print(f"[EMAIL] Generating audio...")
+        audio_bytes = text_to_speech_openai(request.summary, voice="nova")
+        
+        # Send email
+        print(f"[EMAIL] Sending via SendGrid...")
+        success, message = sg_send(
+            to_email=request.email,
+            summary_text=request.summary,
+            pdf_bytes=pdf_bytes,
+            audio_bytes=audio_bytes
+        )
+        
+        if success:
+            return {"success": True, "message": message}
+        else:
+            raise HTTPException(status_code=500, detail=message)
+            
+    except Exception as e:
+        print(f"[EMAIL] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============== Scheduler Endpoints ==============
+
+@app.on_event("startup")
+async def startup_event():
+    """Start the scheduler when the app starts."""
+    from services.scheduler_service import start_scheduler
+    import os
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    
+    # Only start scheduler if email is configured
+    if os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD"):
+        start_scheduler(interval_hours=12)
+        print("[STARTUP] Scheduler started for 12-hour email delivery")
+    else:
+        print("[STARTUP] Email not configured - scheduler not started")
+        print("[STARTUP] Set SMTP_USER, SMTP_PASSWORD, EMAIL_RECIPIENTS in .env to enable")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop the scheduler when the app shuts down."""
+    from services.scheduler_service import stop_scheduler
+    stop_scheduler()
+    print("[SHUTDOWN] Scheduler stopped")
+
+
+@app.get("/scheduler/status")
+def get_scheduler_status():
+    """Get the current scheduler status."""
+    from services.scheduler_service import get_scheduler_status as get_status
+    return get_status()
+
+
+@app.post("/scheduler/trigger")
+def trigger_scheduler():
+    """Manually trigger the scheduled news email job."""
+    from services.scheduler_service import trigger_job_now
+    success = trigger_job_now()
+    return {"triggered": success, "message": "Job triggered" if success else "Failed to trigger job"}
+
+
+class EmailConfigRequest(BaseModel):
+    recipients: list[str]
+
+
+@app.post("/scheduler/config")
+def update_email_config(request: EmailConfigRequest):
+    """Update email recipients (runtime only, does not persist)."""
+    import os
+    os.environ["EMAIL_RECIPIENTS"] = ",".join(request.recipients)
+    return {"message": f"Recipients updated to: {request.recipients}"}
+
+
+@app.post("/scheduler/test-email")
+def test_email():
+    """Send a test email to verify configuration."""
+    from services.email_service import send_email, get_smtp_config
+    
+    config = get_smtp_config()
+    if not config["user"] or not config["password"]:
+        raise HTTPException(status_code=400, detail="SMTP not configured. Set SMTP_USER and SMTP_PASSWORD in .env")
+    
+    if not config["recipients"] or not any(r.strip() for r in config["recipients"]):
+        raise HTTPException(status_code=400, detail="No recipients configured. Set EMAIL_RECIPIENTS in .env")
+    
+    success = send_email(
+        to=config["recipients"],
+        subject="🧪 Test Email from News Simplifier",
+        body_html="<h1>Test Email</h1><p>Your email configuration is working correctly!</p>",
+        body_text="Test Email - Your email configuration is working correctly!"
+    )
+    
+    if success:
+        return {"message": f"Test email sent to {config['recipients']}"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to send test email. Check server logs.")

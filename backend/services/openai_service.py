@@ -168,3 +168,56 @@ Your task is to:
         print(f"OpenAI API error: {e}")
         return None
 
+
+def summarize_combined_excerpts(combined_text: str) -> Optional[str]:
+    """
+    Summarize combined RSS excerpts using GPT-4o-mini.
+    Returns a concise summary of all the news.
+    """
+    client = _get_client()
+    if not client:
+        print("[DEBUG] OpenAI client not configured - API key missing or invalid")
+        return None
+    
+    if not combined_text or len(combined_text.strip()) < 50:
+        return "No content available to summarize."
+    
+    system_prompt = """You are a skilled news editor. Your task is to:
+1. Read through all the news excerpts provided
+2. Create a comprehensive but concise summary
+3. Highlight the most important stories and key themes
+4. Write in clear, engaging prose
+5. Keep the summary to 200-300 words
+6. Group related stories together if applicable"""
+
+    user_prompt = f"Please summarize these news excerpts into a cohesive news digest:\n\n{combined_text}"
+    
+    print("\n" + "=" * 70)
+    print("   SUMMARIZING COMBINED EXCERPTS WITH GPT-4o-mini")
+    print("=" * 70)
+    print(f"Input text length: {len(combined_text)} characters")
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt
+                }
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
+        
+        result = response.choices[0].message.content
+        print(f"[DEBUG] GPT-4o-mini Summary received: {len(result)} characters")
+        print("=" * 70 + "\n")
+        return result
+    except Exception as e:
+        print(f"OpenAI API error: {e}")
+        return None
