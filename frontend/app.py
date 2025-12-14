@@ -9,12 +9,42 @@ st.set_page_config(
     page_title="AI News Assistant",
     page_icon="🤖",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': None
+    }
 )
 
 # --- AI Assistant UI Theme ---
 st.markdown("""
 <style>
+    /* Hide Streamlit hamburger menu, deploy button, header toolbar, and footer */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stDeployButton {display: none !important;}
+    header[data-testid="stHeader"] {display: none !important;}
+    [data-testid="stToolbar"] {display: none !important;}
+    
+    /* Make sure sidebar collapse button is always visible */
+    [data-testid="stSidebarCollapsedControl"] {
+        visibility: visible !important;
+        display: flex !important;
+    }
+    
+    /* Style the collapse button to be more visible */
+    [data-testid="stSidebarCollapsedControl"] button {
+        background-color: #1a1a2e !important;
+        border: none !important;
+        padding: 0.5rem !important;
+        border-radius: 0 8px 8px 0 !important;
+    }
+    
+    [data-testid="stSidebarCollapsedControl"] button svg {
+        fill: white !important;
+    }
+    
     /* Import Google Font */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
@@ -23,23 +53,45 @@ st.markdown("""
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     
-    /* Dark sidebar */
+    /* Sidebar base styles - light by default */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+        background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
     }
     
     [data-testid="stSidebar"] * {
-        color: #e8e8e8 !important;
+        color: #1a1a1a !important;
+    }
+    
+    /* Sidebar selectbox styling */
+    [data-testid="stSidebar"] .stSelectbox [data-baseweb="select"],
+    [data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] > div,
+    [data-testid="stSidebar"] .stSelectbox [role="combobox"] {
+        background-color: #ffffff !important;
+        background: #ffffff !important;
+        border: 1px solid #dee2e6 !important;
+    }
+    
+    [data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] span,
+    [data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] div,
+    [data-testid="stSidebar"] .stSelectbox [role="combobox"],
+    [data-testid="stSidebar"] .stSelectbox [role="combobox"] * {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
+    }
+    
+    [data-testid="stSidebar"] .stSelectbox label {
+        color: #1a1a1a !important;
+        -webkit-text-fill-color: #1a1a1a !important;
     }
     
     [data-testid="stSidebar"] h1, 
     [data-testid="stSidebar"] h2, 
     [data-testid="stSidebar"] h3 {
-        color: #ffffff !important;
+        color: #1a1a1a !important;
     }
     
     [data-testid="stSidebar"] .stMarkdown p {
-        color: #b8b8b8 !important;
+        color: #495057 !important;
     }
     
     /* Main content area */
@@ -136,15 +188,19 @@ st.markdown("""
         color: white !important;
     }
     
-    /* Sidebar buttons specifically */
+    /* Sidebar buttons - light theme by default */
     [data-testid="stSidebar"] div.stButton > button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        color: white !important;
-        border: none !important;
+        background: #ffffff !important;
+        color: #1a1a1a !important;
+        border: 1px solid #dee2e6 !important;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
     
     [data-testid="stSidebar"] div.stButton > button:hover {
-        color: white !important;
+        background: #f8f9fa !important;
+        color: #1a1a1a !important;
+        border-color: #667eea !important;
     }
     
     /* Secondary buttons */
@@ -153,6 +209,21 @@ st.markdown("""
         color: #1a1a1a;
         border: 1px solid #e0e0e0;
         border-radius: 12px;
+    }
+    
+    /* Multiselect pills - subtle styling */
+    [data-baseweb="tag"] {
+        background-color: #e8e4f0 !important;
+        border-color: #d0c8e0 !important;
+        border-radius: 16px !important;
+    }
+    
+    [data-baseweb="tag"] span {
+        color: #4a4a6a !important;
+    }
+    
+    [data-baseweb="tag"] svg {
+        fill: #6a6a8a !important;
     }
     
     /* Expander styling */
@@ -253,8 +324,334 @@ st.markdown("""
     .stSpinner > div {
         border-top-color: #667eea !important;
     }
+    
+    /* Login card */
+    .login-card {
+        background: white;
+        padding: 2.5rem;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        max-width: 400px;
+        margin: 2rem auto;
+    }
+    
+    .login-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .login-header h1 {
+        font-size: 2rem;
+        margin: 0;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+
+# --- Authentication Functions ---
+
+def auth_login(email: str, password: str):
+    """Login user and store token in session and cookies."""
+    try:
+        response = requests.post(
+            f"{API_URL}/auth/login",
+            json={"email": email, "password": password}
+        )
+        if response.status_code == 200:
+            data = response.json()
+            st.session_state['auth_token'] = data['access_token']
+            st.session_state['user_email'] = data['email']
+            st.session_state['user_id'] = data['user_id']
+            return True, "Login successful!"
+        else:
+            error = response.json().get('detail', 'Login failed')
+            return False, error
+    except Exception as e:
+        return False, str(e)
+
+
+def auth_register(email: str, password: str):
+    """Register new user and store token in session."""
+    try:
+        response = requests.post(
+            f"{API_URL}/auth/register",
+            json={"email": email, "password": password}
+        )
+        if response.status_code == 200:
+            data = response.json()
+            st.session_state['auth_token'] = data['access_token']
+            st.session_state['user_email'] = data['email']
+            st.session_state['user_id'] = data['user_id']
+            return True, "Account created successfully!"
+        else:
+            error = response.json().get('detail', 'Registration failed')
+            return False, error
+    except Exception as e:
+        return False, str(e)
+
+
+def auth_logout():
+    """Clear authentication from session."""
+    for key in ['auth_token', 'user_email', 'user_id', 'news_data', 'digest', 'is_premium', 'is_admin', 'user_theme']:
+        if key in st.session_state:
+            del st.session_state[key]
+
+
+def is_authenticated():
+    """Check if user is authenticated."""
+    return 'auth_token' in st.session_state and st.session_state['auth_token']
+
+
+def get_auth_header():
+    """Get authorization header for API requests."""
+    if 'auth_token' in st.session_state:
+        return {"Authorization": f"Bearer {st.session_state['auth_token']}"}
+    return {}
+
+
+def fetch_user_settings():
+    """Fetch user settings from API."""
+    try:
+        response = requests.get(
+            f"{API_URL}/settings/",
+            headers=get_auth_header()
+        )
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        print(f"Error fetching settings: {e}")
+    return None
+
+
+def save_user_settings(settings: dict):
+    """Save user settings to API."""
+    try:
+        response = requests.put(
+            f"{API_URL}/settings/",
+            headers=get_auth_header(),
+            json=settings
+        )
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Error saving settings: {e}")
+    return False
+
+
+def check_premium_status():
+    """Check if current user has premium access."""
+    try:
+        response = requests.get(
+            f"{API_URL}/check-premium",
+            headers=get_auth_header()
+        )
+        if response.status_code == 200:
+            data = response.json()
+            st.session_state['is_premium'] = data.get('is_premium', False)
+            st.session_state['is_admin'] = data.get('is_admin', False)
+            return data
+    except Exception as e:
+        print(f"Error checking premium: {e}")
+    return {"is_premium": False, "is_admin": False}
+
+
+# --- Login/Register UI ---
+
+if not is_authenticated():
+    # Show login/register page - centered narrow card
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("""
+        <div style="text-align: center; padding: 2rem 0 1.5rem 0;">
+            <div style="font-size: 4rem; margin-bottom: 0.5rem;">🤖</div>
+            <h1 style="margin: 0; font-size: 1.8rem; font-weight: 700; color: #1a1a2e;">AI News Assistant</h1>
+            <p style="color: #666; margin-top: 0.5rem; font-size: 0.95rem;">Sign in to access your personalized news digest</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Tabs for login/register
+        tab_login, tab_register = st.tabs(["🔐 Login", "📝 Register"])
+        
+        with tab_login:
+            with st.form("login_form"):
+                st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem;'>Email</p>", unsafe_allow_html=True)
+                login_email = st.text_input("Email", key="login_email", placeholder="your@email.com", label_visibility="collapsed")
+                st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem; margin-top: 1rem;'>Password</p>", unsafe_allow_html=True)
+                login_password = st.text_input("Password", type="password", key="login_password", label_visibility="collapsed")
+                st.markdown("<br>", unsafe_allow_html=True)
+                login_submit = st.form_submit_button("Sign In", use_container_width=True)
+                
+                if login_submit:
+                    if login_email and login_password:
+                        success, message = auth_login(login_email, login_password)
+                        if success:
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.error(message)
+                    else:
+                        st.warning("Please enter email and password")
+        
+        with tab_register:
+            with st.form("register_form"):
+                st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem;'>Email</p>", unsafe_allow_html=True)
+                reg_email = st.text_input("Email", key="reg_email", placeholder="your@email.com", label_visibility="collapsed")
+                st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem; margin-top: 1rem;'>Password</p>", unsafe_allow_html=True)
+                reg_password = st.text_input("Password", type="password", key="reg_password", label_visibility="collapsed")
+                st.markdown("<p style='font-weight: 600; margin-bottom: 0.5rem; margin-top: 1rem;'>Confirm Password</p>", unsafe_allow_html=True)
+                reg_confirm = st.text_input("Confirm Password", type="password", key="reg_confirm", label_visibility="collapsed")
+                st.markdown("<br>", unsafe_allow_html=True)
+                reg_submit = st.form_submit_button("Create Account", use_container_width=True)
+                
+                if reg_submit:
+                    if not reg_email or not reg_password:
+                        st.warning("Please fill in all fields")
+                    elif reg_password != reg_confirm:
+                        st.error("Passwords do not match")
+                    elif len(reg_password) < 6:
+                        st.error("Password must be at least 6 characters")
+                    else:
+                        success, message = auth_register(reg_email, reg_password)
+                        if success:
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.error(message)
+    
+    # Stop execution here - don't show main app
+    st.stop()
+
+
+# --- Main App (only shown when authenticated) ---
+
+# Check premium status on load
+if 'is_premium' not in st.session_state or 'is_admin' not in st.session_state:
+    check_premium_status()
+
+# Load theme from user settings
+if 'user_theme' not in st.session_state:
+    user_settings = fetch_user_settings()
+    if user_settings and 'theme' in user_settings:
+        st.session_state['user_theme'] = user_settings['theme']
+    else:
+        st.session_state['user_theme'] = 'light'
+
+# Apply dark theme CSS if selected
+if st.session_state.get('user_theme') == 'dark':
+    st.markdown("""
+    <style>
+        /* Dark theme overrides */
+        .stApp {
+            background-color: #0e1117 !important;
+            color: #fafafa !important;
+        }
+        
+        .main .block-container {
+            background-color: #0e1117 !important;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            color: #fafafa !important;
+        }
+        
+        p, span, label, .stMarkdown {
+            color: #c8c8c8 !important;
+        }
+        
+        /* Dark cards */
+        .news-card {
+            background: #1a1a2e !important;
+            border-color: #2a2a4e !important;
+        }
+        
+        .news-card:hover {
+            border-color: #667eea !important;
+        }
+        
+        .news-title {
+            color: #fafafa !important;
+        }
+        
+        .news-summary {
+            color: #b8b8b8 !important;
+        }
+        
+        /* Dark inputs */
+        .stTextInput input, .stTextArea textarea, .stSelectbox > div > div {
+            background-color: #1a1a2e !important;
+            color: #fafafa !important;
+            border-color: #2a2a4e !important;
+        }
+        
+        /* Dark expander */
+        .streamlit-expanderHeader {
+            background: #1a1a2e !important;
+            color: #fafafa !important;
+        }
+        
+        /* Dark metrics */
+        [data-testid="stMetricLabel"] {
+            color: #b8b8b8 !important;
+        }
+        
+        /* Dark sidebar */
+        [data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%) !important;
+        }
+        
+        [data-testid="stSidebar"] * {
+            color: #e8e8e8 !important;
+        }
+        
+        [data-testid="stSidebar"] h1, 
+        [data-testid="stSidebar"] h2, 
+        [data-testid="stSidebar"] h3 {
+            color: #ffffff !important;
+        }
+        
+        [data-testid="stSidebar"] .stMarkdown p {
+            color: #b8b8b8 !important;
+        }
+        
+        [data-testid="stSidebar"] .stSelectbox label {
+            color: #e8e8e8 !important;
+            -webkit-text-fill-color: #e8e8e8 !important;
+        }
+        
+        /* Dark sidebar buttons */
+        [data-testid="stSidebar"] div.stButton > button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            color: white !important;
+            border: none !important;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        [data-testid="stSidebar"] div.stButton > button:hover {
+            background: linear-gradient(135deg, #7b8eee 0%, #8a5fb8 100%) !important;
+            color: white !important;
+        }
+        
+        /* Dark sidebar multiselect */
+        [data-testid="stSidebar"] [data-baseweb="tag"] {
+            background-color: #3a3a5e !important;
+            border-color: #4a4a7e !important;
+        }
+        
+        [data-testid="stSidebar"] [data-baseweb="tag"] span {
+            color: #e0e0e0 !important;
+        }
+        
+        [data-testid="stSidebar"] [data-baseweb="tag"] svg {
+            fill: #c0c0c0 !important;
+        }
+        
+        /* Dark sidebar multiselect input */
+        [data-testid="stSidebar"] [data-baseweb="select"] {
+            background-color: #2a2a4e !important;
+            border-color: #3a3a6e !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- App Logic ---
 
@@ -335,6 +732,36 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
+    # User info and logout
+    st.markdown(f"""
+    <div style="background: rgba(255,255,255,0.1); padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem;">
+        <p style="margin: 0; font-size: 0.85rem;">👤 Logged in as:</p>
+        <p style="margin: 0.25rem 0 0 0; font-weight: 600; font-size: 0.9rem;">{st.session_state.get('user_email', 'Unknown')}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🚪 Logout", key="logout_btn", use_container_width=True):
+        auth_logout()
+        st.rerun()
+    
+    # Theme toggle
+    current_theme = st.session_state.get('user_theme', 'light')
+    theme_options = {"🌞 Light": "light", "🌙 Dark": "dark"}
+    theme_labels = {"light": "🌞 Light", "dark": "🌙 Dark"}
+    
+    selected_theme_label = st.selectbox(
+        "Theme",
+        options=list(theme_options.keys()),
+        index=0 if current_theme == "light" else 1,
+        key="theme_selector"
+    )
+    
+    selected_theme = theme_options[selected_theme_label]
+    if selected_theme != st.session_state.get('user_theme', 'light'):
+        st.session_state['user_theme'] = selected_theme
+        save_user_settings({"theme": selected_theme})
+        st.rerun()
+    
     st.markdown("---")
     
     # Status indicator
@@ -367,9 +794,14 @@ with st.sidebar:
         "health": "🏥 Health"
     }
     
-    # Initialize selected categories in session state
+    # Initialize selected categories from user settings
     if 'selected_categories' not in st.session_state:
-        st.session_state.selected_categories = ["top_stories", "technology", "business"]
+        # Load from user settings API
+        user_settings = fetch_user_settings()
+        if user_settings and 'categories' in user_settings:
+            st.session_state.selected_categories = user_settings['categories']
+        else:
+            st.session_state.selected_categories = ["top_stories", "technology", "business"]
     
     # Category multiselect
     selected = st.multiselect(
@@ -380,8 +812,10 @@ with st.sidebar:
         label_visibility="collapsed"
     )
     
-    # Update session state
-    st.session_state.selected_categories = selected
+    # Update session state and save to database if changed
+    if selected != st.session_state.selected_categories:
+        st.session_state.selected_categories = selected
+        save_user_settings({"categories": selected})
     
     # Refresh news button
     if st.button("🔄 Refresh News", key="refresh_categories", use_container_width=True):
@@ -443,6 +877,71 @@ with st.sidebar:
     
     if st.button("👁️ View Source Data", key="view_raw", use_container_width=True):
         st.session_state['show_raw_news'] = True
+    
+    st.markdown("---")
+    
+    # --- Admin Panel (only for admins) ---
+    if st.session_state.get('is_admin', False):
+        st.markdown("---")
+        st.markdown("### 🛠️ Admin Panel")
+        
+        # Fetch users list
+        try:
+            response = requests.get(
+                f"{API_URL}/admin/users",
+                headers=get_auth_header()
+            )
+            if response.status_code == 200:
+                users_data = response.json()
+                users = users_data.get('users', [])
+                
+                if users:
+                    st.caption(f"{len(users)} registered users")
+                    
+                    for user in users:
+                        user_id = user['id']
+                        email = user['email']
+                        is_me = email == st.session_state.get('user_email')
+                        
+                        # Build badges
+                        badges = ""
+                        if user['is_admin']:
+                            badges += "👑"
+                        if user['is_premium']:
+                            badges += "⭐"
+                        
+                        # Display user row with custom HTML
+                        email_display = email if len(email) <= 25 else email[:22] + "..."
+                        st.markdown(f"""
+                        <div style="display: flex; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <span style="font-size: 0.9rem;">{badges}</span>
+                            <span style="flex: 1; margin-left: 0.5rem; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis;" title="{email}">{email_display}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Action buttons in a row
+                        if not is_me:
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                premium_label = "⭐ Remove" if user['is_premium'] else "☆ Premium"
+                                if st.button(premium_label, key=f"premium_{user_id}", use_container_width=True):
+                                    resp = requests.put(
+                                        f"{API_URL}/admin/users/{user_id}/toggle-premium",
+                                        headers=get_auth_header()
+                                    )
+                                    if resp.status_code == 200:
+                                        st.rerun()
+                            with col2:
+                                active_label = "✅ Active" if user['is_active'] else "❌ Disabled"
+                                if st.button(active_label, key=f"active_{user_id}", use_container_width=True):
+                                    resp = requests.put(
+                                        f"{API_URL}/admin/users/{user_id}/toggle-active",
+                                        headers=get_auth_header()
+                                    )
+                                    if resp.status_code == 200:
+                                        st.rerun()
+        except Exception as e:
+            st.error(f"Error loading users: {e}")
     
     st.markdown("---")
     
@@ -677,39 +1176,55 @@ if st.session_state.get('show_raw_news', False):
                     )
             
             with col_audio:
-                if st.button("🔊 Generate Audio (OpenAI TTS)", use_container_width=True):
-                    with st.spinner("Generating audio with OpenAI TTS..."):
-                        try:
-                            response = requests.post(
-                                f"{API_URL}/summary/audio", 
-                                json={"text": st.session_state['gpt_summary']},
-                                timeout=60
-                            )
-                            if response.status_code == 200:
-                                audio_content = response.content
-                                # Validate audio content
-                                if audio_content and len(audio_content) > 1000:
-                                    st.session_state['summary_audio'] = audio_content
-                                    st.success(f"✅ Audio generated ({len(audio_content):,} bytes)")
-                                else:
-                                    st.error(f"Audio content too small ({len(audio_content)} bytes)")
-                            else:
-                                error_detail = response.text[:200] if response.text else "Unknown error"
-                                st.error(f"Failed to generate audio: {error_detail}")
-                        except requests.exceptions.Timeout:
-                            st.error("Request timed out. Try a shorter summary.")
-                        except Exception as e:
-                            st.error(f"Error: {e}")
+                # Check premium status for audio feature
+                is_premium = st.session_state.get('is_premium', False)
                 
-                if 'summary_audio' in st.session_state and st.session_state['summary_audio']:
-                    st.audio(st.session_state['summary_audio'], format='audio/mpeg')
-                    st.download_button(
-                        label="⬇️ Save Audio",
-                        data=st.session_state['summary_audio'],
-                        file_name="news_summary.mp3",
-                        mime="audio/mpeg",
-                        use_container_width=True
-                    )
+                if not is_premium:
+                    st.markdown("""
+                    <div style="background: linear-gradient(135deg, #667eea20, #764ba220); 
+                                padding: 1rem; border-radius: 8px; text-align: center;
+                                border: 1px solid #667eea40;">
+                        <span style="font-size: 1.5rem;">🔒</span>
+                        <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #666;">
+                            <strong>Premium Feature</strong><br>
+                            Audio TTS requires premium access
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    if st.button("🔊 Generate Audio (OpenAI TTS)", use_container_width=True):
+                        with st.spinner("Generating audio with OpenAI TTS..."):
+                            try:
+                                response = requests.post(
+                                    f"{API_URL}/summary/audio", 
+                                    json={"text": st.session_state['gpt_summary']},
+                                    timeout=60
+                                )
+                                if response.status_code == 200:
+                                    audio_content = response.content
+                                    # Validate audio content
+                                    if audio_content and len(audio_content) > 1000:
+                                        st.session_state['summary_audio'] = audio_content
+                                        st.success(f"✅ Audio generated ({len(audio_content):,} bytes)")
+                                    else:
+                                        st.error(f"Audio content too small ({len(audio_content)} bytes)")
+                                else:
+                                    error_detail = response.text[:200] if response.text else "Unknown error"
+                                    st.error(f"Failed to generate audio: {error_detail}")
+                            except requests.exceptions.Timeout:
+                                st.error("Request timed out. Try a shorter summary.")
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+                    
+                    if 'summary_audio' in st.session_state and st.session_state['summary_audio']:
+                        st.audio(st.session_state['summary_audio'], format='audio/mpeg')
+                        st.download_button(
+                            label="⬇️ Save Audio",
+                            data=st.session_state['summary_audio'],
+                            file_name="news_summary.mp3",
+                            mime="audio/mpeg",
+                            use_container_width=True
+                        )
             
             # Email delivery section
             st.markdown("---")

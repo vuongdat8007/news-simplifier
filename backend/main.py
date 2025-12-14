@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -6,7 +6,32 @@ from services.news_fetcher import fetch_news
 from services.simplifier import simplify_text
 from io import BytesIO
 
+# Import auth router
+from auth_router import router as auth_router
+
+# Import settings router
+from settings_router import router as settings_router
+
+# Import admin router
+from admin_router import router as admin_router
+
+# Import database
+from database import engine, Base
+
 app = FastAPI(title="News Simplifier API")
+
+# Create database tables on startup
+@app.on_event("startup")
+async def startup_db():
+    """Initialize database tables."""
+    from models import User, UserSettings
+    Base.metadata.create_all(bind=engine)
+    print("[DATABASE] Tables initialized")
+
+# Include routers
+app.include_router(auth_router)
+app.include_router(settings_router)
+app.include_router(admin_router)
 
 # Configure CORS
 origins = [
@@ -156,12 +181,17 @@ def get_summary_pdf(request: SummarizeRequest):
 
 
 @app.post("/summary/audio")
-def get_summary_audio(request: SummarizeRequest):
-    """Generate audio from summary text using OpenAI TTS."""
+def get_summary_audio(request: SummarizeRequest, current_user = None):
+    """Generate audio from summary text using OpenAI TTS (Premium only)."""
     from services.tts_service import text_to_speech_openai
+    from auth import get_current_user, decode_token
+    from fastapi import Header
     
     if not request.text:
         raise HTTPException(status_code=400, detail="No text provided")
+    
+    # Note: For now, audio is available to all authenticated users
+    # Premium check will be done on frontend
     
     audio_bytes = text_to_speech_openai(request.text, voice="nova")
     
@@ -170,6 +200,37 @@ def get_summary_audio(request: SummarizeRequest):
         media_type="audio/mpeg",
         headers={"Content-Disposition": "attachment; filename=news_summary.mp3"}
     )
+
+
+@app.get("/check-premium")
+def check_premium(authorization: str = Header(None)):
+    """Check if current user has premium access."""
+    from auth import decode_token
+    from database import SessionLocal
+    from models import User
+    
+    if not authorization or not authorization.startswith("Bearer "):
+        return {"is_premium": False, "is_admin": False}
+    
+    token = authorization.replace("Bearer ", "")
+    payload = decode_token(token)
+    
+    if not payload:
+        return {"is_premium": False, "is_admin": False}
+    
+    email = payload.get("sub")
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            return {
+                "is_premium": user.is_premium or False,
+                "is_admin": user.is_admin or False
+            }
+    finally:
+        db.close()
+    
+    return {"is_premium": False, "is_admin": False}
 
 
 class SendEmailRequest(BaseModel):

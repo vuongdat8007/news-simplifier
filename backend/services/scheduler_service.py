@@ -35,8 +35,16 @@ def scheduled_news_job():
         from services.openai_service import summarize_combined_excerpts
         from services.pdf_service import create_pdf
         from services.tts_service import text_to_speech_openai
-        from services.email_service import send_news_summary_email
+        from services.sendgrid_service import send_summary_email
         from bs4 import BeautifulSoup
+        
+        # Get recipients from environment
+        recipients_str = os.getenv("EMAIL_RECIPIENTS", "")
+        recipients = [r.strip() for r in recipients_str.split(",") if r.strip()]
+        
+        if not recipients:
+            print("[SCHEDULER] No recipients configured in EMAIL_RECIPIENTS")
+            return
         
         # Step 1: Fetch news
         print("[SCHEDULER] Fetching news...")
@@ -87,18 +95,26 @@ def scheduled_news_job():
         audio_bytes = text_to_speech_openai(summary, voice="nova")
         print(f"[SCHEDULER] Audio generated: {len(audio_bytes)} bytes")
         
-        # Step 6: Send email
-        print("[SCHEDULER] Sending email...")
-        success = send_news_summary_email(
-            summary=summary,
-            pdf_bytes=pdf_bytes,
-            audio_bytes=audio_bytes
-        )
+        # Step 6: Send email via SendGrid to all recipients
+        print(f"[SCHEDULER] Sending email via SendGrid to {len(recipients)} recipients...")
+        all_success = True
+        for recipient in recipients:
+            success, message = send_summary_email(
+                to_email=recipient,
+                summary_text=summary,
+                pdf_bytes=pdf_bytes,
+                audio_bytes=audio_bytes
+            )
+            if success:
+                print(f"[SCHEDULER] ✅ Email sent to {recipient}")
+            else:
+                print(f"[SCHEDULER] ❌ Failed to send to {recipient}: {message}")
+                all_success = False
         
-        if success:
-            print("[SCHEDULER] ✅ Email sent successfully!")
+        if all_success:
+            print("[SCHEDULER] ✅ All emails sent successfully!")
         else:
-            print("[SCHEDULER] ❌ Failed to send email")
+            print("[SCHEDULER] ⚠️ Some emails failed to send")
         
     except Exception as e:
         print(f"[SCHEDULER] Error in scheduled job: {e}")
