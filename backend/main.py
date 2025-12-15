@@ -15,6 +15,12 @@ from settings_router import router as settings_router
 # Import admin router
 from admin_router import router as admin_router
 
+# Import feedback router
+from feedback_router import router as feedback_router
+
+# Import delivery router
+from delivery_router import router as delivery_router
+
 # Import database
 from database import engine, Base
 
@@ -24,7 +30,7 @@ app = FastAPI(title="News Simplifier API")
 @app.on_event("startup")
 async def startup_db():
     """Initialize database tables."""
-    from models import User, UserSettings
+    from models import User, UserSettings, EmailDeliveryLog
     Base.metadata.create_all(bind=engine)
     print("[DATABASE] Tables initialized")
 
@@ -32,6 +38,8 @@ async def startup_db():
 app.include_router(auth_router)
 app.include_router(settings_router)
 app.include_router(admin_router)
+app.include_router(feedback_router)
+app.include_router(delivery_router)
 
 # Configure CORS
 origins = [
@@ -83,6 +91,59 @@ def get_categories():
         for key, info in RSS_FEEDS_BY_CATEGORY.items()
     ]
     return {"categories": categories}
+
+
+@app.get("/sources")
+def get_sources():
+    """Get available news sources (individual publishers)."""
+    from services.news_fetcher import NEWS_SOURCES
+    
+    sources = [
+        {"key": key, "name": info["name"], "emoji": info["emoji"]}
+        for key, info in NEWS_SOURCES.items()
+    ]
+    return {"sources": sources}
+
+
+@app.get("/news/sources")
+def get_news_by_sources(sources: str = None):
+    """
+    Get news from specific sources.
+    
+    Args:
+        sources: Comma-separated list of source keys (e.g., "reuters,techcrunch")
+    """
+    from services.news_fetcher import fetch_news_by_sources
+    
+    if sources:
+        source_list = [s.strip() for s in sources.split(",")]
+        news = fetch_news_by_sources(source_list)
+    else:
+        news = []
+    
+    return {"news": news}
+
+
+@app.get("/feedly/status")
+def get_feedly_status():
+    """Check if Feedly API is configured."""
+    from services.feedly_fetcher import is_feedly_configured
+    return {"configured": is_feedly_configured()}
+
+
+@app.get("/feedly/articles")
+def get_feedly_articles(count: int = 20):
+    """
+    Fetch articles from user's Feedly feeds.
+    Requires FEEDLY_API_KEY to be configured.
+    """
+    from services.feedly_fetcher import fetch_feedly_articles, is_feedly_configured
+    
+    if not is_feedly_configured():
+        raise HTTPException(status_code=503, detail="Feedly API not configured. Set FEEDLY_API_KEY environment variable.")
+    
+    articles = fetch_feedly_articles(count_per_feed=count)
+    return {"news": articles}
 
 @app.post("/simplify")
 def simplify_news(request: SimplifyRequest):
@@ -320,6 +381,18 @@ def trigger_scheduler():
     from services.scheduler_service import trigger_job_now
     success = trigger_job_now()
     return {"triggered": success, "message": "Job triggered" if success else "Failed to trigger job"}
+
+
+@app.post("/scheduler/trigger-user/{user_id}")
+def trigger_user_scheduler(user_id: int):
+    """Manually trigger the scheduled news email for a specific user."""
+    from services.user_scheduler_service import trigger_user_job
+    success = trigger_user_job(user_id)
+    return {
+        "triggered": success, 
+        "user_id": user_id,
+        "message": f"Job triggered for user {user_id}" if success else f"Failed to trigger job for user {user_id}"
+    }
 
 
 class EmailConfigRequest(BaseModel):

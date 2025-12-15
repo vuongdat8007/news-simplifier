@@ -221,3 +221,72 @@ def summarize_combined_excerpts(combined_text: str) -> Optional[str]:
     except Exception as e:
         print(f"OpenAI API error: {e}")
         return None
+
+
+def summarize_combined_excerpts_with_word_limit(combined_text: str, target_word_count: int = 500) -> Optional[str]:
+    """
+    Summarize combined RSS excerpts using GPT-4o-mini with a specific word count target.
+    Supports adaptive word count based on user feedback.
+    
+    Args:
+        combined_text: The combined news text to summarize
+        target_word_count: Target word count for the summary (adaptive based on feedback)
+    
+    Returns:
+        A summary with approximately the target word count, or None on error.
+    """
+    client = _get_client()
+    if not client:
+        print("[DEBUG] OpenAI client not configured - API key missing or invalid")
+        return None
+    
+    if not combined_text or len(combined_text.strip()) < 50:
+        return "No content available to summarize."
+    
+    # Adjust max_tokens based on word count target (roughly 1.3 tokens per word)
+    max_tokens = min(int(target_word_count * 1.5), 2000)
+    
+    system_prompt = f"""You are a skilled news editor. Your task is to:
+1. Read through all the news excerpts provided
+2. Create a comprehensive but concise summary
+3. Highlight the most important stories and key themes
+4. Write in clear, engaging prose
+5. Keep the summary to approximately {target_word_count} words
+6. Group related stories together if applicable
+
+IMPORTANT: Your summary should be close to {target_word_count} words - not too short, not too long."""
+
+    user_prompt = f"Please summarize these news excerpts into a cohesive news digest of approximately {target_word_count} words:\n\n{combined_text}"
+    
+    print("\n" + "=" * 70)
+    print(f"   SUMMARIZING WITH TARGET WORD COUNT: {target_word_count}")
+    print("=" * 70)
+    print(f"Input text length: {len(combined_text)} characters")
+    print(f"Max tokens: {max_tokens}")
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt
+                }
+            ],
+            max_tokens=max_tokens,
+            temperature=0.7
+        )
+        
+        result = response.choices[0].message.content
+        actual_words = len(result.split())
+        print(f"[DEBUG] GPT-4o-mini Summary: {actual_words} words ({len(result)} chars)")
+        print(f"[DEBUG] Target was {target_word_count} words")
+        print("=" * 70 + "\n")
+        return result
+    except Exception as e:
+        print(f"OpenAI API error: {e}")
+        return None

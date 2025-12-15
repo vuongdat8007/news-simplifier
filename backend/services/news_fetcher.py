@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from typing import List, Dict, Optional, Tuple
 from urllib.parse import urlparse, urljoin
 
-# Categorized RSS Feeds from Google News
+# Categorized RSS Feeds - Categories
 RSS_FEEDS_BY_CATEGORY = {
     "top_stories": {
         "name": "Top Stories",
@@ -50,6 +50,79 @@ RSS_FEEDS_BY_CATEGORY = {
         "name": "Health",
         "emoji": "🏥",
         "url": "https://news.google.com/rss/topics/CAAqIQgKIhtDQkFTRGdvSUwyMHZNR3QwTlRFU0FtVnVLQUFQAQ?hl=en-US&gl=US&ceid=US:en"
+    },
+    # New specialized categories
+    "healthcare_finance": {
+        "name": "Healthcare Finance",
+        "emoji": "🏥💰",
+        "url": "https://news.google.com/rss/search?q=hospital+finance+healthcare+revenue&hl=en-US&gl=US&ceid=US:en"
+    },
+    "ai_blockchain": {
+        "name": "AI & Blockchain",
+        "emoji": "🤖⛓️",
+        "url": "https://news.google.com/rss/search?q=artificial+intelligence+OR+blockchain&hl=en-US&gl=US&ceid=US:en"
+    }
+}
+
+# News Sources - Individual publisher feeds
+NEWS_SOURCES = {
+    # Major Publishers (Apple News-like)
+    "reuters": {
+        "name": "Reuters",
+        "emoji": "📡",
+        "url": "https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best"
+    },
+    "ap_news": {
+        "name": "Associated Press",
+        "emoji": "📰",
+        "url": "https://apnews.com/index.rss"
+    },
+    "npr": {
+        "name": "NPR",
+        "emoji": "🎙️",
+        "url": "https://feeds.npr.org/1001/rss.xml"
+    },
+    "bbc": {
+        "name": "BBC News",
+        "emoji": "🇬🇧",
+        "url": "https://feeds.bbci.co.uk/news/rss.xml"
+    },
+    # Healthcare Finance Sources
+    "fierce_healthcare": {
+        "name": "Fierce Healthcare",
+        "emoji": "🏥",
+        "url": "https://www.fiercehealthcare.com/rss/xml"
+    },
+    "beckers_hospital": {
+        "name": "Becker's Hospital Review",
+        "emoji": "🏨",
+        "url": "https://www.beckershospitalreview.com/rss/bhr.rss"
+    },
+    "healthcare_finance_news": {
+        "name": "Healthcare Finance News",
+        "emoji": "💵",
+        "url": "https://www.healthcarefinancenews.com/rss.xml"
+    },
+    # AI & Tech Sources
+    "techcrunch": {
+        "name": "TechCrunch",
+        "emoji": "💻",
+        "url": "https://techcrunch.com/feed/"
+    },
+    "wired": {
+        "name": "Wired",
+        "emoji": "🔌",
+        "url": "https://www.wired.com/feed/rss"
+    },
+    "coindesk": {
+        "name": "CoinDesk",
+        "emoji": "₿",
+        "url": "https://www.coindesk.com/arc/outboundfeeds/rss/"
+    },
+    "cointelegraph": {
+        "name": "Cointelegraph",
+        "emoji": "⛓️",
+        "url": "https://cointelegraph.com/rss"
     }
 }
 
@@ -337,13 +410,14 @@ def fetch_article_content_fallback(url: str) -> Optional[str]:
     return None
 
 
-def fetch_news_by_categories(categories: List[str] = None) -> List[Dict]:
+def fetch_news_by_categories(categories: List[str] = None, max_per_category: int = 3) -> List[Dict]:
     """
     Fetches news from specified categories.
     
     Args:
         categories: List of category keys (e.g., ['technology', 'business'])
                    If None, uses default categories.
+        max_per_category: Maximum articles to fetch per category (default: 3)
     
     Returns:
         List of article dictionaries with category info.
@@ -367,7 +441,7 @@ def fetch_news_by_categories(categories: List[str] = None) -> List[Dict]:
             print(f"[DEBUG] Fetching category: {cat_emoji} {cat_name}")
             feed = feedparser.parse(url)
             
-            for entry in feed.entries[:3]:  # Limit to 3 per category
+            for entry in feed.entries[:max_per_category]:  # Use configurable limit
                 article_link = entry.get("link", "#")
                 article_title = entry.get("title", "No Title")
                 
@@ -406,6 +480,54 @@ def fetch_news_by_categories(categories: List[str] = None) -> List[Dict]:
             continue
     
     print(f"[DEBUG] Total articles fetched: {len(articles)}")
+    return articles
+
+
+def fetch_news_by_sources(sources: List[str] = None, max_per_source: int = 10) -> List[Dict]:
+    """
+    Fetches news from specified sources (individual publisher feeds).
+    
+    Args:
+        sources: List of source keys (e.g., ['reuters', 'techcrunch'])
+                 If None, returns empty list.
+        max_per_source: Maximum articles to fetch per source (default: 10)
+    """
+    if not sources:
+        return []
+    
+    articles = []
+    
+    for source_key in sources:
+        if source_key not in NEWS_SOURCES:
+            print(f"Unknown source: {source_key}")
+            continue
+        
+        source_info = NEWS_SOURCES[source_key]
+        source_name = source_info["name"]
+        feed_url = source_info["url"]
+        
+        print(f"[DEBUG] Fetching from source: {source_name}")
+        
+        try:
+            feed = feedparser.parse(feed_url)
+            
+            for entry in feed.entries[:max_per_source]:  # Use configurable limit
+                article = {
+                    "title": entry.get("title", "Untitled"),
+                    "link": entry.get("link", ""),
+                    "summary": entry.get("summary", entry.get("description", "")),
+                    "published": entry.get("published", ""),
+                    "source": source_name,
+                    "content": extract_content_from_entry(entry)  # Get content from RSS entry directly
+                }
+                
+                articles.append(article)
+                
+        except Exception as e:
+            print(f"Error fetching from {source_name}: {e}")
+            continue
+    
+    print(f"[DEBUG] Total articles from sources: {len(articles)}")
     return articles
 
 

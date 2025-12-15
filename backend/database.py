@@ -32,7 +32,7 @@ def get_db():
 
 def init_db():
     """Create all tables in database."""
-    from models import User, UserSettings  # Import models to register them
+    from models import User, UserSettings, EmailDeliveryLog  # Import models to register them
     Base.metadata.create_all(bind=engine)
     print("[DATABASE] Tables created successfully")
 

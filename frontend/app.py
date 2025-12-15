@@ -826,63 +826,298 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Daily Digest Section
-    st.markdown("### 📋 AI Digest")
-    st.caption("Generate an AI-powered news summary")
+    # --- News Sources Selection ---
+    st.markdown("### 📡 News Sources")
+    st.caption("Select specific publishers")
     
-    if st.button("✨ Generate Digest", key="generate_digest", use_container_width=True):
-        with st.spinner("AI is analyzing today's news..."):
-            digest = fetch_digest()
-            if digest:
-                st.session_state['digest'] = digest
-                st.success(f"✅ Ready! ({digest.get('article_count', 0)} articles)")
+    # Available news sources
+    NEWS_SOURCES = {
+        "reuters": "📡 Reuters",
+        "ap_news": "📰 Associated Press",
+        "npr": "🎙️ NPR",
+        "bbc": "🇬🇧 BBC News",
+        "fierce_healthcare": "🏥 Fierce Healthcare",
+        "beckers_hospital": "🏨 Becker's Hospital",
+        "healthcare_finance_news": "💵 Healthcare Finance",
+        "techcrunch": "💻 TechCrunch",
+        "wired": "🔌 Wired",
+        "coindesk": "₿ CoinDesk",
+        "cointelegraph": "⛓️ Cointelegraph"
+    }
     
-    # Show download buttons if digest exists
-    if 'digest' in st.session_state:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("📄 PDF", key="download_pdf", use_container_width=True):
-                with st.spinner("Creating PDF..."):
-                    pdf_data = fetch_pdf()
-                    if pdf_data:
-                        st.session_state['pdf_data'] = pdf_data
-        
-        with col2:
-            if st.button("🔊 Audio", key="generate_audio", use_container_width=True):
-                with st.spinner("Generating voice..."):
-                    audio_data = fetch_audio()
-                    if audio_data:
-                        st.session_state['audio_data'] = audio_data
-        
-        # PDF Download button
-        if 'pdf_data' in st.session_state:
-            st.download_button(
-                label="⬇️ Download PDF",
-                data=st.session_state['pdf_data'],
-                file_name="news_digest.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
-        
-        # Audio player
-        if 'audio_data' in st.session_state:
-            st.audio(st.session_state['audio_data'], format='audio/mp3')
+    # Initialize selected sources
+    if 'selected_sources' not in st.session_state:
+        st.session_state.selected_sources = []
+    
+    # Source multiselect
+    selected_sources = st.multiselect(
+        "Select news sources",
+        options=list(NEWS_SOURCES.keys()),
+        default=st.session_state.selected_sources,
+        format_func=lambda x: NEWS_SOURCES[x],
+        label_visibility="collapsed"
+    )
+    
+    # Update session state if changed
+    if selected_sources != st.session_state.selected_sources:
+        st.session_state.selected_sources = selected_sources
+        # Clear news to refetch
+        if 'news_data' in st.session_state:
+            del st.session_state['news_data']
     
     st.markdown("---")
     
-    # Combined Raw News Section
-    st.markdown("### 📰 Raw Data")
-    st.caption("Access the source content")
+    # --- Feedly Integration ---
+    st.markdown("### 🦅 Feedly")
+    st.caption("Connect your Feedly account")
     
-    if st.button("👁️ View Source Data", key="view_raw", use_container_width=True):
-        st.session_state['show_raw_news'] = True
+    # Check Feedly status
+    feedly_configured = False
+    try:
+        response = requests.get(f"{API_URL}/feedly/status", timeout=5)
+        if response.status_code == 200:
+            feedly_configured = response.json().get('configured', False)
+    except:
+        pass
+    
+    if feedly_configured:
+        st.success("✅ Feedly connected")
+        
+        # Toggle to include Feedly articles
+        if 'include_feedly' not in st.session_state:
+            st.session_state.include_feedly = False
+        
+        include_feedly = st.checkbox(
+            "Include Feedly articles",
+            value=st.session_state.include_feedly,
+            key="feedly_toggle"
+        )
+        
+        if include_feedly != st.session_state.include_feedly:
+            st.session_state.include_feedly = include_feedly
+            if 'news_data' in st.session_state:
+                del st.session_state['news_data']
+    else:
+        st.info("Set FEEDLY_API_KEY in .env to connect")
+    
+    st.markdown("---")
+    
+    # Email Subscription Section
+    st.markdown("### 📧 Email Subscription")
+    st.caption("Receive news digest in your inbox")
+    
+    # Get current email from settings or use logged-in email
+    default_email = st.session_state.get('notification_email', st.session_state.get('user_email', ''))
+    
+    notification_email = st.text_input(
+        "Email address",
+        value=default_email,
+        placeholder="your@email.com",
+        key="notification_email_input"
+    )
+    
+    if st.button("💾 Save Email", key="save_email", use_container_width=True):
+        if notification_email:
+            try:
+                response = requests.put(
+                    f"{API_URL}/settings/",
+                    headers=get_auth_header(),
+                    json={"notification_email": notification_email}
+                )
+                if response.status_code == 200:
+                    st.session_state['notification_email'] = notification_email
+                    st.success("✅ Email saved!")
+                else:
+                    st.error("Failed to save email")
+            except Exception as e:
+                st.error(f"Error: {e}")
+        else:
+            st.warning("Please enter an email address")
+    
+    st.markdown("---")
+    
+    # --- Scheduled Email Settings ---
+    st.markdown("### ⏰ Scheduled Digest")
+    st.caption("Automatic news summary delivery")
+    
+    # Load scheduler settings from user settings
+    if 'scheduler_settings' not in st.session_state:
+        user_settings = fetch_user_settings()
+        if user_settings:
+            st.session_state['scheduler_settings'] = {
+                'enabled': user_settings.get('scheduler_enabled', False),
+                'interval': user_settings.get('scheduler_interval_hours', 12),
+                'max_items': user_settings.get('max_items_per_category', 5),
+                'word_count': user_settings.get('target_word_count', 500)
+            }
+        else:
+            st.session_state['scheduler_settings'] = {
+                'enabled': False,
+                'interval': 12,
+                'max_items': 5,
+                'word_count': 500
+            }
+    
+    sched = st.session_state['scheduler_settings']
+    
+    # Enable/Disable scheduler
+    scheduler_enabled = st.checkbox(
+        "Enable scheduled emails",
+        value=sched['enabled'],
+        key="scheduler_enabled_toggle"
+    )
+    
+    if scheduler_enabled:
+        # Interval selection
+        interval_options = {6: "Every 6 hours", 12: "Every 12 hours", 24: "Daily", 48: "Every 2 days"}
+        current_interval_label = interval_options.get(sched['interval'], "Every 12 hours")
+        
+        selected_interval_label = st.selectbox(
+            "Delivery frequency",
+            options=list(interval_options.values()),
+            index=list(interval_options.values()).index(current_interval_label),
+            key="scheduler_interval_select"
+        )
+        selected_interval = [k for k, v in interval_options.items() if v == selected_interval_label][0]
+        
+        # Max items per category
+        max_items = st.slider(
+            "Max articles per category",
+            min_value=1,
+            max_value=10,
+            value=sched['max_items'],
+            key="scheduler_max_items"
+        )
+        
+        # Display current adaptive word count (read-only)
+        st.markdown(f"""
+        <div style="background: rgba(102, 126, 234, 0.1); padding: 0.75rem; border-radius: 8px; margin: 0.5rem 0;">
+            <p style="margin: 0; font-size: 0.85rem; opacity: 0.8;">📊 Current summary length</p>
+            <p style="margin: 0.25rem 0 0 0; font-weight: 600; font-size: 1.1rem;">{sched['word_count']} words</p>
+            <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem; opacity: 0.6;">Adjusts based on your feedback</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Save scheduler settings button
+        if st.button("💾 Save Schedule", key="save_scheduler", use_container_width=True):
+            try:
+                response = requests.put(
+                    f"{API_URL}/settings/",
+                    headers=get_auth_header(),
+                    json={
+                        "scheduler_enabled": True,
+                        "scheduler_interval_hours": selected_interval,
+                        "max_items_per_category": max_items
+                    }
+                )
+                if response.status_code == 200:
+                    st.session_state['scheduler_settings'] = {
+                        'enabled': True,
+                        'interval': selected_interval,
+                        'max_items': max_items,
+                        'word_count': sched['word_count']
+                    }
+                    st.success("✅ Schedule saved!")
+                else:
+                    st.error(f"Failed to save: {response.text}")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    # Update enabled state if toggled off
+    if scheduler_enabled != sched['enabled']:
+        try:
+            requests.put(
+                f"{API_URL}/settings/",
+                headers=get_auth_header(),
+                json={"scheduler_enabled": scheduler_enabled}
+            )
+            st.session_state['scheduler_settings']['enabled'] = scheduler_enabled
+            st.rerun()
+        except:
+            pass
+    
+    # Premium badge for audio
+    if st.session_state.get('is_premium', False):
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.5rem 0.75rem; border-radius: 8px; margin-top: 0.5rem;">
+            <p style="margin: 0; font-size: 0.8rem;">🎧 Premium: Audio included in emails</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.caption("💎 Upgrade to Premium for audio summaries")
+    
+    st.markdown("---")
+    
+    # --- Delivery History Section ---
+    st.markdown("### 📧 Delivery History")
+    
+    with st.expander("View past deliveries", expanded=False):
+        try:
+            response = requests.get(
+                f"{API_URL}/deliveries/",
+                headers=get_auth_header(),
+                params={"limit": 5}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                deliveries = data.get('deliveries', [])
+                total = data.get('total', 0)
+                
+                if deliveries:
+                    st.caption(f"Showing {len(deliveries)} of {total} deliveries")
+                    
+                    for delivery in deliveries:
+                        # Format date
+                        delivered_at = delivery.get('delivered_at', '')
+                        if delivered_at:
+                            try:
+                                dt = dateutil.parser.parse(delivered_at)
+                                date_str = dt.strftime("%b %d, %Y %I:%M %p")
+                            except:
+                                date_str = delivered_at[:16]
+                        else:
+                            date_str = "Unknown"
+                        
+                        # Feedback status
+                        feedback = delivery.get('feedback_received')
+                        if feedback:
+                            feedback_icon = {"too_short": "📈", "just_right": "✅", "too_long": "📉"}.get(feedback, "")
+                            feedback_text = f"{feedback_icon} {feedback.replace('_', ' ').title()}"
+                        else:
+                            feedback_text = "⏳ Awaiting"
+                        
+                        # Word count info
+                        target = delivery.get('word_count_target', '-')
+                        actual = delivery.get('actual_word_count', '-')
+                        
+                        # Audio badge
+                        audio_badge = "🎧" if delivery.get('audio_included') else ""
+                        
+                        st.markdown(f"""
+                        <div style="background: rgba(102, 126, 234, 0.1); padding: 0.75rem; border-radius: 8px; margin-bottom: 0.5rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 0.8rem; font-weight: 600;">{date_str}</span>
+                                <span style="font-size: 0.75rem;">{audio_badge}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 0.25rem;">
+                                <span style="font-size: 0.75rem; opacity: 0.8;">Words: {actual}/{target}</span>
+                                <span style="font-size: 0.75rem;">{feedback_text}</span>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No deliveries yet. Enable scheduling to receive email digests!")
+            elif response.status_code == 401:
+                st.caption("Login required to view history")
+            else:
+                st.caption("Unable to load delivery history")
+        except Exception as e:
+            st.caption(f"Error loading history")
     
     st.markdown("---")
     
     # --- Admin Panel (only for admins) ---
     if st.session_state.get('is_admin', False):
-        st.markdown("---")
         st.markdown("### 🛠️ Admin Panel")
         
         # Fetch users list
@@ -986,311 +1221,6 @@ if 'digest' in st.session_state:
     
     st.markdown("---")
 
-# --- Display Combined Raw News if requested ---
-if st.session_state.get('show_raw_news', False):
-    # Beautiful header with gradient
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 2rem; border-radius: 16px; margin-bottom: 1.5rem; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
-        <h2 style="color: white; margin: 0; font-weight: 700; font-size: 1.8rem;">📄 Combined Raw News Content</h2>
-        <p style="color: rgba(255,255,255,0.8); margin: 0.5rem 0 0 0; font-size: 1rem;">Raw content from RSS feeds and article scraping</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Refresh button to force re-fetch
-    col_refresh, col_spacer = st.columns([1, 3])
-    with col_refresh:
-        if st.button("🔄 Refresh News Data", use_container_width=True):
-            categories = st.session_state.get('selected_categories', ["top_stories", "technology", "business"])
-            with st.spinner("Fetching fresh news data..."):
-                st.session_state.news_data = fetch_news(categories)
-                st.rerun()
-    
-    # Fetch news if not already fetched
-    if 'news_data' not in st.session_state:
-        categories = st.session_state.get('selected_categories', ["top_stories", "technology", "business"])
-        with st.spinner("Fetching news..."):
-            st.session_state.news_data = fetch_news(categories)
-    
-    if st.session_state.news_data:
-        # Build combined content for download
-        combined_content = []
-        for idx, article in enumerate(st.session_state.news_data, 1):
-            content = article.get('content')
-            title = article.get('title', 'Untitled')
-            source = article.get('source', 'Unknown')
-            
-            article_section = f"--- ARTICLE {idx}: {title} ({source}) ---\n"
-            if content:
-                article_section += content
-            else:
-                article_section += "[Content not available - scraping failed]"
-            article_section += "\n\n"
-            combined_content.append(article_section)
-        
-        full_combined = "\n".join(combined_content)
-        articles_with_content = sum(1 for a in st.session_state.news_data if a.get('content'))
-        total_chars = sum(len(a.get('content') or '') for a in st.session_state.news_data)
-        
-        # Stats cards with beautiful styling
-        st.markdown("""
-        <style>
-            .stat-card {
-                background: white;
-                padding: 1.2rem;
-                border-radius: 12px;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-                text-align: center;
-                border: 1px solid #eee;
-            }
-            .stat-number {
-                font-size: 2rem;
-                font-weight: 700;
-                color: #1e3c72;
-                margin: 0;
-            }
-            .stat-label {
-                font-size: 0.85rem;
-                color: #666;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                margin: 0;
-            }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown(f"""
-            <div class="stat-card">
-                <p class="stat-number">{len(st.session_state.news_data)}</p>
-                <p class="stat-label">Total Articles</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""
-            <div class="stat-card">
-                <p class="stat-number">{articles_with_content}</p>
-                <p class="stat-label">Successfully Scraped</p>
-            </div>
-            """, unsafe_allow_html=True)
-        with col3:
-            st.markdown(f"""
-            <div class="stat-card">
-                <p class="stat-number">{total_chars:,}</p>
-                <p class="stat-label">Total Characters</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Single combined content display
-        st.markdown("""
-        <div style="background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.08); margin-bottom: 1rem;">
-            <h3 style="margin: 0 0 1rem 0; color: #1a1a1a;">📰 All RSS Excerpts Combined</h3>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Build combined content from RSS excerpts
-        clean_combined = []
-        for idx, article in enumerate(st.session_state.news_data, 1):
-            title = article.get('title', 'Untitled')
-            source = article.get('source', 'Unknown')
-            summary = article.get('summary', '')
-            
-            section = f"{'='*60}\n"
-            section += f"ARTICLE {idx}: {title}\n"
-            section += f"Source: {source}\n"
-            section += f"{'='*60}\n\n"
-            
-            # Clean the RSS summary (remove HTML tags if any)
-            if summary:
-                from bs4 import BeautifulSoup
-                clean_summary = BeautifulSoup(summary, 'html.parser').get_text(separator=' ', strip=True)
-                section += clean_summary
-            else:
-                section += "[No excerpt available]"
-            
-            section += "\n\n"
-            clean_combined.append(section)
-        
-        all_content = "\n".join(clean_combined)
-        
-        # Display in a large text area
-        st.text_area(
-            "Combined RSS Excerpts",
-            all_content,
-            height=500,
-            label_visibility="collapsed"
-        )
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Summarize button
-        if st.button("🤖 Summarize with GPT-4o-mini", use_container_width=True, type="primary"):
-            with st.spinner("Generating summary with GPT-4o-mini..."):
-                try:
-                    response = requests.post(f"{API_URL}/summarize-combined", json={"text": all_content})
-                    if response.status_code == 200:
-                        st.session_state['gpt_summary'] = response.json().get('summary', 'No summary generated')
-                    else:
-                        st.error(f"Error: {response.json().get('detail', 'Failed to generate summary')}")
-                except Exception as e:
-                    st.error(f"Error connecting to backend: {e}")
-        
-        # Display summary if available
-        if 'gpt_summary' in st.session_state:
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1.5rem; border-radius: 12px; margin: 1rem 0;">
-                <h4 style="color: white; margin: 0 0 1rem 0;">🤖 GPT-4o-mini Summary</h4>
-                <div style="background: white; padding: 1rem; border-radius: 8px; line-height: 1.6;">
-            """, unsafe_allow_html=True)
-            st.write(st.session_state['gpt_summary'])
-            st.markdown("</div></div>", unsafe_allow_html=True)
-            
-            # Export buttons for summary
-            st.markdown("#### Export Summary")
-            col_pdf, col_audio = st.columns(2)
-            
-            with col_pdf:
-                if st.button("📄 Download as PDF", use_container_width=True):
-                    with st.spinner("Generating PDF..."):
-                        try:
-                            response = requests.post(
-                                f"{API_URL}/summary/pdf", 
-                                json={"text": st.session_state['gpt_summary']}
-                            )
-                            if response.status_code == 200:
-                                st.session_state['summary_pdf'] = response.content
-                            else:
-                                st.error("Failed to generate PDF")
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-                
-                if 'summary_pdf' in st.session_state:
-                    st.download_button(
-                        label="⬇️ Save PDF",
-                        data=st.session_state['summary_pdf'],
-                        file_name="news_summary.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-            
-            with col_audio:
-                # Check premium status for audio feature
-                is_premium = st.session_state.get('is_premium', False)
-                
-                if not is_premium:
-                    st.markdown("""
-                    <div style="background: linear-gradient(135deg, #667eea20, #764ba220); 
-                                padding: 1rem; border-radius: 8px; text-align: center;
-                                border: 1px solid #667eea40;">
-                        <span style="font-size: 1.5rem;">🔒</span>
-                        <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #666;">
-                            <strong>Premium Feature</strong><br>
-                            Audio TTS requires premium access
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    if st.button("🔊 Generate Audio (OpenAI TTS)", use_container_width=True):
-                        with st.spinner("Generating audio with OpenAI TTS..."):
-                            try:
-                                response = requests.post(
-                                    f"{API_URL}/summary/audio", 
-                                    json={"text": st.session_state['gpt_summary']},
-                                    timeout=60
-                                )
-                                if response.status_code == 200:
-                                    audio_content = response.content
-                                    # Validate audio content
-                                    if audio_content and len(audio_content) > 1000:
-                                        st.session_state['summary_audio'] = audio_content
-                                        st.success(f"✅ Audio generated ({len(audio_content):,} bytes)")
-                                    else:
-                                        st.error(f"Audio content too small ({len(audio_content)} bytes)")
-                                else:
-                                    error_detail = response.text[:200] if response.text else "Unknown error"
-                                    st.error(f"Failed to generate audio: {error_detail}")
-                            except requests.exceptions.Timeout:
-                                st.error("Request timed out. Try a shorter summary.")
-                            except Exception as e:
-                                st.error(f"Error: {e}")
-                    
-                    if 'summary_audio' in st.session_state and st.session_state['summary_audio']:
-                        st.audio(st.session_state['summary_audio'], format='audio/mpeg')
-                        st.download_button(
-                            label="⬇️ Save Audio",
-                            data=st.session_state['summary_audio'],
-                            file_name="news_summary.mp3",
-                            mime="audio/mpeg",
-                            use_container_width=True
-                        )
-            
-            # Email delivery section
-            st.markdown("---")
-            st.markdown("#### 📧 Send to Email")
-            
-            col_email, col_send = st.columns([3, 1])
-            
-            with col_email:
-                email_input = st.text_input(
-                    "Recipient email",
-                    placeholder="Enter your email address",
-                    label_visibility="collapsed",
-                    key="email_input"
-                )
-            
-            with col_send:
-                if st.button("📧 Send", use_container_width=True):
-                    if not email_input or "@" not in email_input:
-                        st.error("Please enter a valid email address")
-                    else:
-                        with st.spinner("Generating PDF & audio, sending email..."):
-                            try:
-                                response = requests.post(
-                                    f"{API_URL}/send-summary-email",
-                                    json={
-                                        "email": email_input,
-                                        "summary": st.session_state['gpt_summary']
-                                    },
-                                    timeout=120
-                                )
-                                if response.status_code == 200:
-                                    result = response.json()
-                                    st.success(f"✅ {result.get('message', 'Email sent!')}")
-                                else:
-                                    error = response.json().get('detail', 'Failed to send email')
-                                    st.error(f"❌ {error}")
-                            except requests.exceptions.Timeout:
-                                st.error("Request timed out. Please try again.")
-                            except Exception as e:
-                                st.error(f"Error: {e}")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Action buttons row
-        col1, col2 = st.columns(2)
-        with col1:
-            st.download_button(
-                label="⬇️ Download All Raw Content",
-                data=all_content,
-                file_name="combined_raw_news.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
-        with col2:
-            if st.button("❌ Close Raw News View", use_container_width=True):
-                st.session_state['show_raw_news'] = False
-                # Clean up all session state
-                for key in ['gpt_summary', 'summary_pdf', 'summary_audio']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
-    else:
-        st.info("No news data available. Please wait for news to load.")
-    
-    st.markdown("---")
-
 # --- Main Header ---
 st.markdown("""
 <div style="margin-bottom: 2rem;">
@@ -1300,10 +1230,37 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if 'news_data' not in st.session_state:
-    # Get selected categories from session state or use defaults
+    # Get selected categories and sources from session state
     categories = st.session_state.get('selected_categories', ["top_stories", "technology", "business"])
+    sources = st.session_state.get('selected_sources', [])
+    
     with st.spinner("🔍 Scanning news sources..."):
-        st.session_state.news_data = fetch_news(categories)
+        # Fetch from categories
+        category_news = fetch_news(categories)
+        
+        # Fetch from selected sources if any
+        source_news = []
+        if sources:
+            try:
+                sources_param = ",".join(sources)
+                response = requests.get(f"{API_URL}/news/sources?sources={sources_param}", timeout=30)
+                if response.status_code == 200:
+                    source_news = response.json().get('news', [])
+            except Exception as e:
+                print(f"Error fetching from sources: {e}")
+        
+        # Fetch from Feedly if enabled
+        feedly_news = []
+        if st.session_state.get('include_feedly', False):
+            try:
+                response = requests.get(f"{API_URL}/feedly/articles", timeout=30)
+                if response.status_code == 200:
+                    feedly_news = response.json().get('news', [])
+            except Exception as e:
+                print(f"Error fetching from Feedly: {e}")
+        
+        # Combine results
+        st.session_state.news_data = category_news + source_news + feedly_news
 
 if not st.session_state.news_data:
     st.markdown("""
@@ -1318,47 +1275,107 @@ if st.session_state.news_data:
     <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem;">
         <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.35rem 0.75rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">
             {len(st.session_state.news_data)} articles
-        </span>
+    </span>
         <span style="color: #888; font-size: 0.85rem;">from your subscribed sources</span>
     </div>
     """, unsafe_allow_html=True)
 
-for idx, article in enumerate(st.session_state.news_data):
-    # Card Container
-    with st.container():
-        # Clean HTML from summary
-        from bs4 import BeautifulSoup
-        raw_summary = article.get('summary', 'No summary')
-        clean_summary = BeautifulSoup(raw_summary, 'html.parser').get_text(separator=' ', strip=True)
-        display_summary = clean_summary[:200] + '...' if len(clean_summary) > 200 else clean_summary
+# --- Raw Source Data (Collapsible with AI Features) ---
+if 'news_data' in st.session_state and st.session_state.news_data:
+    st.markdown("---")
+    with st.expander("📰 Combined Raw Source Data", expanded=False):
+        st.caption("All RSS excerpts combined with AI summarization options")
         
-        st.markdown(f"""
-        <div class="news-card">
-            <span class="source-tag">{html_module.escape(article['source'])}</span>
-            <h3 class="news-title">{html_module.escape(article['title'])}</h3>
-            <p class="news-summary">{html_module.escape(display_summary)}</p>
-        </div>
-        """, unsafe_allow_html=True)
+        # Stats
+        articles_count = len(st.session_state.news_data)
+        articles_with_content = sum(1 for a in st.session_state.news_data if a.get('content') or a.get('summary'))
+        st.markdown(f"**{articles_count}** articles fetched, **{articles_with_content}** with content")
         
-        # Expandable section to view raw news data
-        with st.expander("📋 View Raw News Data"):
-            st.markdown("**Source:**")
-            st.code(article.get('source', 'N/A'), language=None)
-            
-            st.markdown("**Published:**")
-            st.code(article.get('published', 'N/A'), language=None)
-            
-            st.markdown("**Link:**")
-            st.code(article.get('link', 'N/A'), language=None)
-            
-            st.markdown("**RSS Summary:**")
-            st.code(article.get('summary', 'N/A'), language=None)
-            
-            st.markdown("**Full Scraped Content:**")
-            content = article.get('content')
-            if content:
-                st.code(content, language=None)
+        # Build combined content for summarization
+        combined_text = []
+        for idx, article in enumerate(st.session_state.news_data, 1):
+            title = article.get('title', 'Untitled')
+            source = article.get('source', 'Unknown')
+            summary = article.get('summary', '')
+            combined_text.append(f"Article {idx}: {title} ({source})\n{summary}\n")
+        all_content = "\n".join(combined_text)
+        
+        # Action buttons
+        st.markdown("#### 🤖 AI Actions")
+        col_summarize, col_audio = st.columns(2)
+        
+        with col_summarize:
+            if st.button("📝 Summarize with GPT-4o-mini", use_container_width=True, key="summarize_raw"):
+                with st.spinner("Generating summary..."):
+                    try:
+                        response = requests.post(
+                            f"{API_URL}/summarize-combined",
+                            json={"text": all_content},
+                            timeout=60
+                        )
+                        if response.status_code == 200:
+                            st.session_state['raw_summary'] = response.json().get('summary', 'No summary generated')
+                        else:
+                            st.error(f"Error: {response.json().get('detail', 'Failed to generate summary')}")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+        
+        with col_audio:
+            is_premium = st.session_state.get('is_premium', False)
+            if not is_premium:
+                st.markdown("🔒 *Premium only*")
             else:
-                st.info("No full content available (scraping may have failed for this article)")
+                if st.button("🔊 Generate Audio (TTS)", use_container_width=True, key="tts_raw"):
+                    text_to_speak = st.session_state.get('raw_summary', all_content[:4000])
+                    with st.spinner("Generating audio..."):
+                        try:
+                            response = requests.post(
+                                f"{API_URL}/summary/audio",
+                                json={"text": text_to_speak},
+                                timeout=120
+                            )
+                            if response.status_code == 200:
+                                st.session_state['raw_audio'] = response.content
+                            else:
+                                st.error("Failed to generate audio")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+        
+        # Display summary if available
+        if 'raw_summary' in st.session_state:
+            st.markdown("---")
+            st.markdown("#### 📋 GPT Summary")
+            st.markdown(st.session_state['raw_summary'])
+        
+        # Display audio if available
+        if 'raw_audio' in st.session_state:
+            st.audio(st.session_state['raw_audio'], format='audio/mp3')
         
         st.markdown("---")
+        st.markdown("#### 📄 Raw Articles")
+        
+        # Display each article
+        from bs4 import BeautifulSoup
+        for idx, article in enumerate(st.session_state.news_data):
+            title = article.get('title', 'Untitled')
+            source = article.get('source', 'Unknown')
+            raw_summary = article.get('summary', '')
+            link = article.get('link', '')
+            raw_content = article.get('content', '')
+            
+            # Clean HTML tags from summary
+            clean_summary = BeautifulSoup(raw_summary, 'html.parser').get_text(separator=' ', strip=True) if raw_summary else ''
+            # Clean HTML tags from content
+            clean_content = BeautifulSoup(raw_content, 'html.parser').get_text(separator='\n', strip=True) if raw_content else ''
+            
+            st.markdown(f"**{idx+1}. {title}**")
+            st.caption(f"Source: {source}")
+            if clean_summary:
+                display_summary = clean_summary[:500] + "..." if len(clean_summary) > 500 else clean_summary
+                st.markdown(display_summary)
+            if clean_content:
+                with st.expander("📄 Full Scraped Content"):
+                    st.text(clean_content)
+            if link:
+                st.markdown(f"[Read original article]({link})")
+            st.markdown("---")
