@@ -1,3 +1,6 @@
+"""
+Authentication utilities - Firebase version.
+"""
 import os
 import bcrypt
 from datetime import datetime, timedelta
@@ -5,7 +8,6 @@ from typing import Optional
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -57,8 +59,7 @@ def decode_token(token: str) -> Optional[dict]:
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """FastAPI dependency to get current user from JWT token."""
-    from database import SessionLocal
-    from models import User
+    import firebase_models as fm
     
     token = credentials.credentials
     payload = decode_token(token)
@@ -77,31 +78,23 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             detail="Invalid token payload",
         )
     
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.email == email).first()
-        if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found",
-            )
-        return user
-    finally:
-        db.close()
+    user = fm.get_user_by_email(email)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    
+    return user
 
 
 def authenticate_user(email: str, password: str):
     """Authenticate user by email and password."""
-    from database import SessionLocal
-    from models import User
+    import firebase_models as fm
     
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.email == email).first()
-        if not user:
-            return None
-        if not verify_password(password, user.password_hash):
-            return None
-        return user
-    finally:
-        db.close()
+    user = fm.get_user_by_email(email)
+    if not user:
+        return None
+    if not verify_password(password, user["password_hash"]):
+        return None
+    return user

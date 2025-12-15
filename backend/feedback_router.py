@@ -1,24 +1,14 @@
 """
-Feedback router for handling email feedback submissions.
-Allows users to rate summaries and adaptively adjust word count.
+Feedback router - Firebase version.
+Handles email feedback submissions and adaptive word count adjustment.
 """
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from datetime import datetime
-from sqlalchemy.orm import Session
-from database import SessionLocal
-from models import EmailDeliveryLog, UserSettings
+from datetime import datetime, timezone
+
+import firebase_models as fm
 
 router = APIRouter(prefix="/api/feedback", tags=["Feedback"])
-
-
-def get_db():
-    """Get database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.get("/{token}")
@@ -33,19 +23,13 @@ def submit_feedback(
     - too_long: decrease by 50 words
     - too_short: increase by 50 words
     - just_right: no change
-    
-    Returns an HTML page confirming the feedback.
     """
     if rating not in ["too_short", "just_right", "too_long"]:
         raise HTTPException(status_code=400, detail="Invalid rating. Must be: too_short, just_right, or too_long")
     
-    db = SessionLocal()
-    
     try:
         # Find delivery log by token
-        delivery = db.query(EmailDeliveryLog).filter(
-            EmailDeliveryLog.feedback_token == token
-        ).first()
+        delivery = fm.get_delivery_log_by_token(token)
         
         if not delivery:
             return HTMLResponse(content=_render_feedback_page(
@@ -54,64 +38,57 @@ def submit_feedback(
             ), status_code=404)
         
         # Check if already submitted
-        if delivery.feedback_received:
+        if delivery.get("feedback_received"):
             return HTMLResponse(content=_render_feedback_page(
                 success=True,
-                message=f"You already submitted feedback: {_format_rating(delivery.feedback_received)}",
+                message=f"You already submitted feedback: {_format_rating(delivery['feedback_received'])}",
                 already_submitted=True
             ))
         
         # Check if expired
-        if delivery.feedback_expires_at and datetime.now() > delivery.feedback_expires_at.replace(tzinfo=None):
+        expires_at = delivery.get("feedback_expires_at")
+        if expires_at and datetime.now(timezone.utc) > expires_at:
             return HTMLResponse(content=_render_feedback_page(
                 success=False,
                 message="This feedback link has expired."
             ))
         
         # Record feedback
-        delivery.feedback_received = rating
-        delivery.feedback_received_at = datetime.now()
+        fm.update_delivery_log(delivery["id"], {
+            "feedback_received": rating,
+            "feedback_received_at": datetime.now(timezone.utc)
+        })
         
         # Adjust user's target word count
-        settings = db.query(UserSettings).filter(
-            UserSettings.user_id == delivery.user_id
-        ).first()
-        
+        settings = fm.get_user_settings(delivery["user_id"])
         adjustment_message = ""
+        
         if settings:
-            old_word_count = settings.target_word_count or 500
+            old_word_count = settings.get("target_word_count", 500)
             
             if rating == "too_long":
-                # Decrease word count, minimum 200
                 new_word_count = max(200, old_word_count - 50)
-                settings.target_word_count = new_word_count
+                fm.update_user_settings(delivery["user_id"], {"target_word_count": new_word_count})
                 adjustment_message = f"Summary length decreased: {old_word_count} → {new_word_count} words"
             elif rating == "too_short":
-                # Increase word count, maximum 1000
                 new_word_count = min(1000, old_word_count + 50)
-                settings.target_word_count = new_word_count
+                fm.update_user_settings(delivery["user_id"], {"target_word_count": new_word_count})
                 adjustment_message = f"Summary length increased: {old_word_count} → {new_word_count} words"
             else:
                 adjustment_message = f"Summary length unchanged: {old_word_count} words"
-        
-        db.commit()
         
         print(f"[FEEDBACK] Token {token}: rating={rating}, {adjustment_message}")
         
         return HTMLResponse(content=_render_feedback_page(
             success=True,
-            message=f"Thank you for your feedback!",
+            message="Thank you for your feedback!",
             rating=rating,
             adjustment=adjustment_message
         ))
         
     except Exception as e:
         print(f"[FEEDBACK] Error processing feedback: {e}")
-        db.rollback()
         raise HTTPException(status_code=500, detail="Error processing feedback")
-    
-    finally:
-        db.close()
 
 
 def _format_rating(rating: str) -> str:

@@ -55,6 +55,25 @@ else
     echo "NOTE: Copy your application files to $APP_DIR"
 fi
 
+# Check if Firebase credentials exist
+if [ ! -f backend/firebase-credentials.json ]; then
+    echo ""
+    echo "=== Firebase Credentials Required ==="
+    echo "Create backend/firebase-credentials.json with your Firebase service account:"
+    echo ""
+    echo "1. Go to https://console.firebase.google.com"
+    echo "2. Select your project > Project Settings > Service Accounts"
+    echo "3. Click 'Generate new private key'"
+    echo "4. Save the JSON file as: backend/firebase-credentials.json"
+    echo ""
+    echo "Or paste the JSON content using:"
+    echo "  cat > backend/firebase-credentials.json << 'EOF'"
+    echo "  {paste your JSON here}"
+    echo "  EOF"
+    echo ""
+    exit 1
+fi
+
 # Check for .env file
 if [ ! -f ".env" ]; then
     echo ""

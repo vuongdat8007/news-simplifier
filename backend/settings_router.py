@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+"""
+Settings router - Firebase version.
+"""
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from sqlalchemy.orm import Session
-from database import get_db
-from models import User, UserSettings
+
 from auth import get_current_user
+import firebase_models as fm
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -21,9 +23,6 @@ class SettingsResponse(BaseModel):
     max_items_per_category: int
     target_word_count: int
     theme: str
-    
-    class Config:
-        from_attributes = True
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -40,86 +39,62 @@ class UpdateSettingsRequest(BaseModel):
 # --- Endpoints ---
 
 @router.get("/", response_model=SettingsResponse)
-def get_settings(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
+def get_settings(current_user: dict = Depends(get_current_user)):
     """Get current user's settings."""
-    settings = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
-    
-    if not settings:
-        settings = UserSettings(
-            user_id=current_user.id,
-            categories=["top_stories", "technology", "business"],
-            sources=[],
-            max_items_per_category=5,
-            target_word_count=500
-        )
-        db.add(settings)
-        db.commit()
-        db.refresh(settings)
+    settings = fm.get_user_settings(current_user["id"])
     
     return SettingsResponse(
-        categories=settings.categories or ["top_stories", "technology", "business"],
-        sources=settings.sources or [],
-        notification_email=settings.notification_email,
-        email_enabled=settings.email_enabled or False,
-        scheduler_enabled=settings.scheduler_enabled or False,
-        scheduler_interval_hours=settings.scheduler_interval_hours or 12,
-        max_items_per_category=settings.max_items_per_category or 5,
-        target_word_count=settings.target_word_count or 500,
-        theme=settings.theme or "light"
+        categories=settings.get("categories", ["top_stories", "technology", "business"]),
+        sources=settings.get("sources", []),
+        notification_email=settings.get("notification_email"),
+        email_enabled=settings.get("email_enabled", False),
+        scheduler_enabled=settings.get("scheduler_enabled", False),
+        scheduler_interval_hours=settings.get("scheduler_interval_hours", 12),
+        max_items_per_category=settings.get("max_items_per_category", 5),
+        target_word_count=settings.get("target_word_count", 500),
+        theme=settings.get("theme", "light")
     )
 
 
 @router.put("/", response_model=SettingsResponse)
 def update_settings(
     request: UpdateSettingsRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: dict = Depends(get_current_user)
 ):
     """Update current user's settings."""
-    settings = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
-    
-    if not settings:
-        settings = UserSettings(user_id=current_user.id)
-        db.add(settings)
+    updates = {}
     
     if request.categories is not None:
-        settings.categories = request.categories
+        updates["categories"] = request.categories
     if request.sources is not None:
-        settings.sources = request.sources
+        updates["sources"] = request.sources
     if request.notification_email is not None:
-        settings.notification_email = request.notification_email
+        updates["notification_email"] = request.notification_email
     if request.email_enabled is not None:
-        settings.email_enabled = request.email_enabled
+        updates["email_enabled"] = request.email_enabled
     if request.scheduler_enabled is not None:
-        settings.scheduler_enabled = request.scheduler_enabled
+        updates["scheduler_enabled"] = request.scheduler_enabled
     if request.scheduler_interval_hours is not None:
-        # Validate interval (6, 12, 24, 48)
         if request.scheduler_interval_hours not in [6, 12, 24, 48]:
             raise HTTPException(status_code=400, detail="Invalid interval. Must be 6, 12, 24, or 48 hours.")
-        settings.scheduler_interval_hours = request.scheduler_interval_hours
+        updates["scheduler_interval_hours"] = request.scheduler_interval_hours
     if request.max_items_per_category is not None:
-        # Validate max items (1-10)
         if not 1 <= request.max_items_per_category <= 10:
             raise HTTPException(status_code=400, detail="Max items must be between 1 and 10.")
-        settings.max_items_per_category = request.max_items_per_category
+        updates["max_items_per_category"] = request.max_items_per_category
     if request.theme is not None:
-        settings.theme = request.theme
+        updates["theme"] = request.theme
     
-    db.commit()
-    db.refresh(settings)
+    settings = fm.update_user_settings(current_user["id"], updates)
     
     return SettingsResponse(
-        categories=settings.categories or ["top_stories", "technology", "business"],
-        sources=settings.sources or [],
-        notification_email=settings.notification_email,
-        email_enabled=settings.email_enabled or False,
-        scheduler_enabled=settings.scheduler_enabled or False,
-        scheduler_interval_hours=settings.scheduler_interval_hours or 12,
-        max_items_per_category=settings.max_items_per_category or 5,
-        target_word_count=settings.target_word_count or 500,
-        theme=settings.theme or "light"
+        categories=settings.get("categories", ["top_stories", "technology", "business"]),
+        sources=settings.get("sources", []),
+        notification_email=settings.get("notification_email"),
+        email_enabled=settings.get("email_enabled", False),
+        scheduler_enabled=settings.get("scheduler_enabled", False),
+        scheduler_interval_hours=settings.get("scheduler_interval_hours", 12),
+        max_items_per_category=settings.get("max_items_per_category", 5),
+        target_word_count=settings.get("target_word_count", 500),
+        theme=settings.get("theme", "light")
     )
-

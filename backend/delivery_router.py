@@ -1,21 +1,19 @@
 """
-Delivery history router for viewing past email deliveries.
+Delivery history router - Firebase version.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
-from database import get_db
-from models import User, EmailDeliveryLog
+
 from auth import get_current_user
+import firebase_models as fm
 
 router = APIRouter(prefix="/deliveries", tags=["Deliveries"])
 
 
 class DeliveryResponse(BaseModel):
-    id: int
+    id: str
     delivered_at: datetime
     categories_used: Optional[List[str]]
     items_per_category: Optional[int]
@@ -26,9 +24,6 @@ class DeliveryResponse(BaseModel):
     audio_included: bool
     feedback_received: Optional[str]
     feedback_received_at: Optional[datetime]
-    
-    class Config:
-        from_attributes = True
 
 
 class DeliveryListResponse(BaseModel):
@@ -40,35 +35,25 @@ class DeliveryListResponse(BaseModel):
 def get_delivery_history(
     limit: int = 10,
     offset: int = 0,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: dict = Depends(get_current_user)
 ):
     """Get user's delivery history."""
-    
-    # Get total count
-    total = db.query(EmailDeliveryLog).filter(
-        EmailDeliveryLog.user_id == current_user.id
-    ).count()
-    
-    # Get deliveries with pagination
-    deliveries = db.query(EmailDeliveryLog).filter(
-        EmailDeliveryLog.user_id == current_user.id
-    ).order_by(desc(EmailDeliveryLog.delivered_at)).offset(offset).limit(limit).all()
+    deliveries, total = fm.get_user_delivery_logs(current_user["id"], limit, offset)
     
     return DeliveryListResponse(
         deliveries=[
             DeliveryResponse(
-                id=d.id,
-                delivered_at=d.delivered_at,
-                categories_used=d.categories_used,
-                items_per_category=d.items_per_category,
-                word_count_target=d.word_count_target,
-                actual_word_count=d.actual_word_count,
-                email_sent_to=d.email_sent_to,
-                pdf_included=d.pdf_included or False,
-                audio_included=d.audio_included or False,
-                feedback_received=d.feedback_received,
-                feedback_received_at=d.feedback_received_at
+                id=d["id"],
+                delivered_at=d.get("delivered_at"),
+                categories_used=d.get("categories_used"),
+                items_per_category=d.get("items_per_category"),
+                word_count_target=d.get("word_count_target"),
+                actual_word_count=d.get("actual_word_count"),
+                email_sent_to=d.get("email_sent_to"),
+                pdf_included=d.get("pdf_included", False),
+                audio_included=d.get("audio_included", False),
+                feedback_received=d.get("feedback_received"),
+                feedback_received_at=d.get("feedback_received_at")
             )
             for d in deliveries
         ],
@@ -78,30 +63,33 @@ def get_delivery_history(
 
 @router.get("/{delivery_id}", response_model=DeliveryResponse)
 def get_delivery_detail(
-    delivery_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    delivery_id: str,
+    current_user: dict = Depends(get_current_user)
 ):
     """Get details of a specific delivery."""
+    from firebase_db import get_db
     
-    delivery = db.query(EmailDeliveryLog).filter(
-        EmailDeliveryLog.id == delivery_id,
-        EmailDeliveryLog.user_id == current_user.id
-    ).first()
+    db = get_db()
+    doc = db.collection("delivery_logs").document(delivery_id).get()
     
-    if not delivery:
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+    
+    delivery = doc.to_dict()
+    
+    if delivery.get("user_id") != current_user["id"]:
         raise HTTPException(status_code=404, detail="Delivery not found")
     
     return DeliveryResponse(
-        id=delivery.id,
-        delivered_at=delivery.delivered_at,
-        categories_used=delivery.categories_used,
-        items_per_category=delivery.items_per_category,
-        word_count_target=delivery.word_count_target,
-        actual_word_count=delivery.actual_word_count,
-        email_sent_to=delivery.email_sent_to,
-        pdf_included=delivery.pdf_included or False,
-        audio_included=delivery.audio_included or False,
-        feedback_received=delivery.feedback_received,
-        feedback_received_at=delivery.feedback_received_at
+        id=doc.id,
+        delivered_at=delivery.get("delivered_at"),
+        categories_used=delivery.get("categories_used"),
+        items_per_category=delivery.get("items_per_category"),
+        word_count_target=delivery.get("word_count_target"),
+        actual_word_count=delivery.get("actual_word_count"),
+        email_sent_to=delivery.get("email_sent_to"),
+        pdf_included=delivery.get("pdf_included", False),
+        audio_included=delivery.get("audio_included", False),
+        feedback_received=delivery.get("feedback_received"),
+        feedback_received_at=delivery.get("feedback_received_at")
     )

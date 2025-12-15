@@ -10,8 +10,7 @@ reportlab
 gTTS
 apscheduler
 sendgrid
-sqlalchemy
-psycopg2-binary
+firebase-admin
 python-jose[cryptography]
 passlib[bcrypt]
 email-validator

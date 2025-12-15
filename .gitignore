@@ -7,6 +7,10 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+
+# Firebase credentials (NEVER commit this)
+firebase-credentials.json
+**/firebase-credentials.json
 downloads/
 eggs/
 .eggs/

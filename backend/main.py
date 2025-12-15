@@ -21,18 +21,22 @@ from feedback_router import router as feedback_router
 # Import delivery router
 from delivery_router import router as delivery_router
 
-# Import database
-from database import engine, Base
+# Import Firebase
+from firebase_db import get_db, test_connection
 
 app = FastAPI(title="News Simplifier API")
 
-# Create database tables on startup
+# Initialize Firebase on startup
 @app.on_event("startup")
-async def startup_db():
-    """Initialize database tables."""
-    from models import User, UserSettings, EmailDeliveryLog
-    Base.metadata.create_all(bind=engine)
-    print("[DATABASE] Tables initialized")
+async def startup_firebase():
+    """Initialize Firebase connection."""
+    try:
+        if test_connection():
+            print("[FIREBASE] Connection successful")
+        else:
+            print("[FIREBASE] Warning: Could not verify connection")
+    except Exception as e:
+        print(f"[FIREBASE] Error during startup: {e}")
 
 # Include routers
 app.include_router(auth_router)
