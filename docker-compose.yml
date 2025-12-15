@@ -37,8 +37,8 @@ services:
     ports:
       - "8501:8501"
     environment:
-      # Use PUBLIC URL since browser makes API calls, not the container
-      - API_URL=${PUBLIC_API_URL:-http://localhost:8000}
+      # Streamlit makes server-side API calls, so use Docker internal network
+      - API_URL=http://backend:8000
     depends_on:
       - backend
     healthcheck:
