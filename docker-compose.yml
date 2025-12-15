@@ -21,7 +21,7 @@ services:
     volumes:
       - ./backend:/app
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -37,11 +37,12 @@ services:
     ports:
       - "8501:8501"
     environment:
-      - API_URL=http://backend:8000
+      # Use PUBLIC URL since browser makes API calls, not the container
+      - API_URL=${PUBLIC_API_URL:-http://localhost:8000}
     depends_on:
       - backend
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8501/" ]
       interval: 30s
       timeout: 10s
       retries: 3

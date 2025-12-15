@@ -2,8 +2,10 @@ import streamlit as st
 import requests
 import dateutil.parser
 import html as html_module
+import os
 
-API_URL = "http://localhost:8000"
+# API URL - uses environment variable in Docker, localhost for local dev
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 st.set_page_config(
     page_title="AI News Assistant",
