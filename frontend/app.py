@@ -780,94 +780,9 @@ with st.sidebar:
     </style>
     """, unsafe_allow_html=True)
     
-    # --- Category Selection ---
-    st.markdown("### 🏷️ Categories")
-    
-    # Define available categories
-    CATEGORIES = {
-        "top_stories": "📰 Top Stories",
-        "world": "🌍 World",
-        "nation": "🇺🇸 U.S.",
-        "business": "💼 Business",
-        "technology": "💻 Technology",
-        "entertainment": "🎬 Entertainment",
-        "sports": "⚽ Sports",
-        "science": "🔬 Science",
-        "health": "🏥 Health"
-    }
-    
-    # Initialize selected categories from user settings
-    if 'selected_categories' not in st.session_state:
-        # Load from user settings API
-        user_settings = fetch_user_settings()
-        if user_settings and 'categories' in user_settings:
-            st.session_state.selected_categories = user_settings['categories']
-        else:
-            st.session_state.selected_categories = ["top_stories", "technology", "business"]
-    
-    # Category multiselect
-    selected = st.multiselect(
-        "Select news categories",
-        options=list(CATEGORIES.keys()),
-        default=st.session_state.selected_categories,
-        format_func=lambda x: CATEGORIES[x],
-        label_visibility="collapsed"
-    )
-    
-    # Update session state and save to database if changed
-    if selected != st.session_state.selected_categories:
-        st.session_state.selected_categories = selected
-        save_user_settings({"categories": selected})
-    
-    # Refresh news button
-    if st.button("🔄 Refresh News", key="refresh_categories", use_container_width=True):
-        # Clear existing news data to force refetch
-        if 'news_data' in st.session_state:
-            del st.session_state['news_data']
-        st.rerun()
-    
     st.markdown("---")
     
-    # --- News Sources Selection ---
-    st.markdown("### 📡 News Sources")
-    st.caption("Select specific publishers")
-    
-    # Available news sources
-    NEWS_SOURCES = {
-        "reuters": "📡 Reuters",
-        "ap_news": "📰 Associated Press",
-        "npr": "🎙️ NPR",
-        "bbc": "🇬🇧 BBC News",
-        "fierce_healthcare": "🏥 Fierce Healthcare",
-        "beckers_hospital": "🏨 Becker's Hospital",
-        "healthcare_finance_news": "💵 Healthcare Finance",
-        "techcrunch": "💻 TechCrunch",
-        "wired": "🔌 Wired",
-        "coindesk": "₿ CoinDesk",
-        "cointelegraph": "⛓️ Cointelegraph"
-    }
-    
-    # Initialize selected sources
-    if 'selected_sources' not in st.session_state:
-        st.session_state.selected_sources = []
-    
-    # Source multiselect
-    selected_sources = st.multiselect(
-        "Select news sources",
-        options=list(NEWS_SOURCES.keys()),
-        default=st.session_state.selected_sources,
-        format_func=lambda x: NEWS_SOURCES[x],
-        label_visibility="collapsed"
-    )
-    
-    # Update session state if changed
-    if selected_sources != st.session_state.selected_sources:
-        st.session_state.selected_sources = selected_sources
-        # Clear news to refetch
-        if 'news_data' in st.session_state:
-            del st.session_state['news_data']
-    
-    st.markdown("---")
+    # Categories and Sources moved to main content area
     
     # --- Feedly Integration ---
     st.markdown("### 🦅 Feedly")
@@ -1223,13 +1138,113 @@ if 'digest' in st.session_state:
     
     st.markdown("---")
 
+# --- Define Categories and Sources ---
+CATEGORIES = {
+    "top_stories": "📰 Top Stories",
+    "world": "🌍 World",
+    "nation": "🇺🇸 U.S.",
+    "business": "💼 Business",
+    "technology": "💻 Technology",
+    "entertainment": "🎬 Entertainment",
+    "sports": "⚽ Sports",
+    "science": "🔬 Science",
+    "health": "🏥 Health"
+}
+
+NEWS_SOURCES = {
+    "reuters": "📡 Reuters",
+    "ap_news": "📰 Associated Press",
+    "npr": "🎙️ NPR",
+    "bbc": "🇬🇧 BBC News",
+    "fierce_healthcare": "🏥 Fierce Healthcare",
+    "beckers_hospital": "🏨 Becker's Hospital",
+    "healthcare_finance_news": "💵 Healthcare Finance",
+    "techcrunch": "💻 TechCrunch",
+    "wired": "🔌 Wired",
+    "coindesk": "₿ CoinDesk",
+    "cointelegraph": "⛓️ Cointelegraph"
+}
+
+# Initialize selected categories from user settings
+if 'selected_categories' not in st.session_state:
+    user_settings = fetch_user_settings()
+    if user_settings and 'categories' in user_settings:
+        st.session_state.selected_categories = user_settings['categories']
+    else:
+        st.session_state.selected_categories = ["top_stories", "technology", "business"]
+
+if 'selected_sources' not in st.session_state:
+    st.session_state.selected_sources = []
+
 # --- Main Header ---
 st.markdown("""
-<div style="margin-bottom: 2rem;">
+<div style="margin-bottom: 1.5rem;">
     <h1 style="margin: 0; font-size: 2rem;">👋 Welcome back!</h1>
     <p style="color: #666; margin: 0.5rem 0 0 0; font-size: 1.1rem;">Here's what's happening in the news today</p>
 </div>
 """, unsafe_allow_html=True)
+
+# --- Filter Bar: Categories & Sources ---
+st.markdown("""
+<style>
+    .filter-bar {
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+        border: 1px solid rgba(102, 126, 234, 0.2);
+        border-radius: 16px;
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+    .filter-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #4a5568;
+        margin-bottom: 0.5rem;
+    }
+</style>
+<div class="filter-bar">
+</div>
+""", unsafe_allow_html=True)
+
+# Filter controls in columns
+filter_col1, filter_col2, filter_col3 = st.columns([3, 3, 1])
+
+with filter_col1:
+    st.markdown("<p class='filter-label'>🏷️ Categories</p>", unsafe_allow_html=True)
+    selected = st.multiselect(
+        "Select categories",
+        options=list(CATEGORIES.keys()),
+        default=st.session_state.selected_categories,
+        format_func=lambda x: CATEGORIES[x],
+        label_visibility="collapsed",
+        key="main_categories"
+    )
+    if selected != st.session_state.selected_categories:
+        st.session_state.selected_categories = selected
+        save_user_settings({"categories": selected})
+        if 'news_data' in st.session_state:
+            del st.session_state['news_data']
+
+with filter_col2:
+    st.markdown("<p class='filter-label'>📡 Sources</p>", unsafe_allow_html=True)
+    selected_sources = st.multiselect(
+        "Select sources",
+        options=list(NEWS_SOURCES.keys()),
+        default=st.session_state.selected_sources,
+        format_func=lambda x: NEWS_SOURCES[x],
+        label_visibility="collapsed",
+        key="main_sources"
+    )
+    if selected_sources != st.session_state.selected_sources:
+        st.session_state.selected_sources = selected_sources
+        if 'news_data' in st.session_state:
+            del st.session_state['news_data']
+
+with filter_col3:
+    st.markdown("<p class='filter-label'>&nbsp;</p>", unsafe_allow_html=True)
+    if st.button("🔄 Refresh", key="refresh_main", use_container_width=True):
+        if 'news_data' in st.session_state:
+            del st.session_state['news_data']
+        st.rerun()
 
 if 'news_data' not in st.session_state:
     # Get selected categories and sources from session state
