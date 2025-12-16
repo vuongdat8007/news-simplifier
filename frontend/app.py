@@ -1017,7 +1017,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Filter controls in columns
-filter_col1, filter_col2, filter_col3 = st.columns([3, 3, 1])
+filter_col1, filter_col2, filter_col3, filter_col4 = st.columns([3, 3, 1, 1])
 
 with filter_col1:
     st.markdown("<p class='filter-label'>🏷️ Categories</p>", unsafe_allow_html=True)
@@ -1029,11 +1029,6 @@ with filter_col1:
         label_visibility="collapsed",
         key="main_categories"
     )
-    if selected != st.session_state.selected_categories:
-        st.session_state.selected_categories = selected
-        save_user_settings({"categories": selected})
-        if 'news_data' in st.session_state:
-            del st.session_state['news_data']
 
 with filter_col2:
     st.markdown("<p class='filter-label'>📡 Sources</p>", unsafe_allow_html=True)
@@ -1045,16 +1040,48 @@ with filter_col2:
         label_visibility="collapsed",
         key="main_sources"
     )
-    if selected_sources != st.session_state.selected_sources:
-        st.session_state.selected_sources = selected_sources
-        if 'news_data' in st.session_state:
-            del st.session_state['news_data']
 
 with filter_col3:
+    st.markdown("<p class='filter-label'>&nbsp;</p>", unsafe_allow_html=True)
+    # Save button - applies changes and refreshes
+    if st.button("💾 Save", key="save_filters", use_container_width=True):
+        # Check if anything changed
+        cats_changed = selected != st.session_state.selected_categories
+        srcs_changed = selected_sources != st.session_state.selected_sources
+        
+        if cats_changed or srcs_changed:
+            st.session_state.selected_categories = selected
+            st.session_state.selected_sources = selected_sources
+            
+            # Save categories to backend
+            if cats_changed:
+                save_user_settings({"categories": selected})
+            
+            # Clear data to trigger refetch
+            if 'news_data' in st.session_state:
+                del st.session_state['news_data']
+            if 'digest' in st.session_state:
+                del st.session_state['digest']
+            if 'digest_pdf' in st.session_state:
+                del st.session_state['digest_pdf']
+            if 'digest_audio' in st.session_state:
+                del st.session_state['digest_audio']
+            
+            st.rerun()
+        else:
+            st.toast("No changes to save")
+
+with filter_col4:
     st.markdown("<p class='filter-label'>&nbsp;</p>", unsafe_allow_html=True)
     if st.button("🔄 Refresh", key="refresh_main", use_container_width=True):
         if 'news_data' in st.session_state:
             del st.session_state['news_data']
+        if 'digest' in st.session_state:
+            del st.session_state['digest']
+        if 'digest_pdf' in st.session_state:
+            del st.session_state['digest_pdf']
+        if 'digest_audio' in st.session_state:
+            del st.session_state['digest_audio']
         st.rerun()
 
 # --- Main Content Tabs ---
