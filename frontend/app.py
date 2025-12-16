@@ -1060,6 +1060,79 @@ with tab1:
             # Stats
             articles_count = len(st.session_state.news_data)
             articles_with_content = sum(1 for a in st.session_state.news_data if a.get('content') or a.get('summary'))
+            
+            # Display stats
+            stat_col1, stat_col2 = st.columns(2)
+            with stat_col1:
+                st.metric("📰 Total Articles", articles_count)
+            with stat_col2:
+                st.metric("📄 With Content", articles_with_content)
+            
+            st.markdown("---")
+            
+            # Combine all content for display
+            from bs4 import BeautifulSoup
+            
+            combined_text = []
+            for idx, article in enumerate(st.session_state.news_data):
+                title = article.get('title', 'Untitled')
+                source = article.get('source', 'Unknown')
+                raw_summary = article.get('summary', '')
+                raw_content = article.get('content', '')
+                link = article.get('link', '')
+                
+                # Clean HTML tags
+                clean_summary = BeautifulSoup(raw_summary, 'html.parser').get_text(separator=' ', strip=True) if raw_summary else ''
+                clean_content = BeautifulSoup(raw_content, 'html.parser').get_text(separator=' ', strip=True) if raw_content else ''
+                
+                # Use content if available, otherwise summary
+                text = clean_content if clean_content else clean_summary
+                
+                if text:
+                    combined_text.append(f"**{idx+1}. {title}** ({source})\n{text[:500]}{'...' if len(text) > 500 else ''}\n")
+            
+            # Display combined content
+            if combined_text:
+                # Create copyable text area
+                all_text = "\n---\n".join(combined_text)
+                st.text_area(
+                    "Combined Content (Copy All)",
+                    value=all_text,
+                    height=400,
+                    key="combined_raw_text"
+                )
+                
+                st.markdown("---")
+                
+                # Individual article display
+                st.markdown("#### 📋 Individual Articles")
+                for idx, article in enumerate(st.session_state.news_data[:20]):  # Limit to 20
+                    title = article.get('title', 'Untitled')
+                    source = article.get('source', 'Unknown')
+                    raw_summary = article.get('summary', '')
+                    link = article.get('link', '')
+                    raw_content = article.get('content', '')
+                    
+                    clean_summary = BeautifulSoup(raw_summary, 'html.parser').get_text(separator=' ', strip=True) if raw_summary else ''
+                    clean_content = BeautifulSoup(raw_content, 'html.parser').get_text(separator=' ', strip=True) if raw_content else ''
+                    
+                    st.markdown(f"**{idx+1}. {title}**")
+                    st.caption(f"Source: {source}")
+                    
+                    if clean_summary:
+                        display_summary = clean_summary[:500] + "..." if len(clean_summary) > 500 else clean_summary
+                        st.markdown(display_summary)
+                    
+                    if clean_content:
+                        with st.expander("📄 Full Content"):
+                            st.text(clean_content[:2000])
+                    
+                    if link:
+                        st.markdown(f"[🔗 Read original]({link})")
+                    
+                    st.markdown("---")
+            else:
+                st.info("No content available to display.")
 
 with tab2:
     st.markdown("### 📧 Email & Scheduler")
