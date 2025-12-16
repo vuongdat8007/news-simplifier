@@ -985,7 +985,11 @@ if 'selected_categories' not in st.session_state:
         st.session_state.selected_categories = ["top_stories", "technology", "business"]
 
 if 'selected_sources' not in st.session_state:
-    st.session_state.selected_sources = []
+    user_settings = fetch_user_settings()
+    if user_settings and 'sources' in user_settings:
+        st.session_state.selected_sources = user_settings['sources']
+    else:
+        st.session_state.selected_sources = []
 
 # --- Main Header ---
 st.markdown("""
@@ -1053,9 +1057,15 @@ with filter_col3:
             st.session_state.selected_categories = selected
             st.session_state.selected_sources = selected_sources
             
-            # Save categories to backend
+            # Save both categories and sources to backend
+            settings_to_save = {}
             if cats_changed:
-                save_user_settings({"categories": selected})
+                settings_to_save["categories"] = selected
+            if srcs_changed:
+                settings_to_save["sources"] = selected_sources
+            
+            if settings_to_save:
+                save_user_settings(settings_to_save)
             
             # Clear data to trigger refetch
             if 'news_data' in st.session_state:
