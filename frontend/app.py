@@ -893,6 +893,8 @@ CATEGORIES = {
     "nation": "🇺🇸 U.S.",
     "business": "💼 Business",
     "technology": "💻 Technology",
+    "healthcare_finance": "🏥💰 Healthcare Finance",
+    "ai_blockchain": "🤖⛓️ AI & Blockchain",
     "entertainment": "🎬 Entertainment",
     "sports": "⚽ Sports",
     "science": "🔬 Science",
