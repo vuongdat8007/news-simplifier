@@ -875,15 +875,18 @@ if 'digest' in st.session_state:
             # Simple date formatting
             st.metric("🕐 Generated", generated_at.split('T')[0] if 'T' in generated_at else generated_at[:10])
     
-    # Digest content in styled box
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 12px; margin: 1rem 0;">
-        <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+    # Digest content in styled box - all in one HTML block
+    digest_text = digest_data.get('digest', 'No digest content available.')
+    # Convert markdown to HTML-safe text (basic)
+    digest_html = digest_text.replace('\n', '<br>')
+    
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 4px; border-radius: 10px; margin: 0.5rem 0;">
+        <div style="background: white; padding: 1rem 1.25rem; border-radius: 8px; line-height: 1.6; font-size: 0.95rem;">
+            {digest_html}
+        </div>
+    </div>
     """, unsafe_allow_html=True)
-    
-    st.markdown(digest_data.get('digest', 'No digest content available.'))
-    
-    st.markdown("</div></div>", unsafe_allow_html=True)
     
     st.markdown("---")
 
