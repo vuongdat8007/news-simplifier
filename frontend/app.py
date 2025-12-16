@@ -995,7 +995,7 @@ with filter_col3:
         st.rerun()
 
 # --- Main Content Tabs ---
-tab1, tab2, tab3 = st.tabs(["📰 News Feed", "⚙️ Settings", "🤖 AI Tools"])
+tab1, tab2, tab3, tab4 = st.tabs(["📰 News Feed", "📧 Email & Scheduler", "🔗 Integrations", "🤖 AI Tools"])
 
 with tab1:
     if 'news_data' not in st.session_state:
@@ -1060,74 +1060,42 @@ with tab1:
             articles_with_content = sum(1 for a in st.session_state.news_data if a.get('content') or a.get('summary'))
 
 with tab2:
-    st.markdown("### ⚙️ User Settings")
-
-    # --- Feedly Integration ---
-    st.markdown("#### 🦅 Feedly Integration")
-    st.caption("Connect your Feedly account to include your personalized feeds.")
+    st.markdown("### 📧 Email & Scheduler")
+    st.caption("Configure your email notifications and automatic digest delivery.")
     
-    # Check Feedly status
-    feedly_configured = False
-    try:
-        response = requests.get(f"{API_URL}/feedly/status", timeout=5)
-        if response.status_code == 200:
-            feedly_configured = response.json().get('configured', False)
-    except:
-        pass
-    
-    if feedly_configured:
-        st.success("✅ Feedly connected")
-        
-        # Toggle to include Feedly articles
-        if 'include_feedly' not in st.session_state:
-            st.session_state.include_feedly = False
-        
-        include_feedly = st.checkbox(
-            "Include Feedly articles in news feed",
-            value=st.session_state.include_feedly,
-            key="feedly_toggle_tab"
-        )
-        
-        if include_feedly != st.session_state.include_feedly:
-            st.session_state.include_feedly = include_feedly
-            if 'news_data' in st.session_state:
-                del st.session_state['news_data']
-    else:
-        st.info("Set FEEDLY_API_KEY in .env to connect Feedly.")
-    
-    st.markdown("---")
-    
-    # Email Subscription Section
-    st.markdown("#### 📧 Email Subscription")
-    st.caption("Receive news digest in your inbox.")
+    # --- Email Subscription Section ---
+    st.markdown("#### ✉️ Notification Email")
     
     # Get current email from settings or use logged-in email
     default_email = st.session_state.get('notification_email', st.session_state.get('user_email', ''))
     
-    notification_email = st.text_input(
-        "Email address for notifications",
-        value=default_email,
-        placeholder="your@email.com",
-        key="notification_email_input_tab"
-    )
-    
-    if st.button("💾 Save Email", key="save_email_tab", use_container_width=True):
-        if notification_email:
-            try:
-                response = requests.put(
-                    f"{API_URL}/settings/",
-                    headers=get_auth_header(),
-                    json={"notification_email": notification_email}
-                )
-                if response.status_code == 200:
-                    st.session_state['notification_email'] = notification_email
-                    st.success("✅ Email saved!")
-                else:
-                    st.error("Failed to save email")
-            except Exception as e:
-                st.error(f"Error: {e}")
-        else:
-            st.warning("Please enter an email address")
+    col_email1, col_email2 = st.columns([3, 1])
+    with col_email1:
+        notification_email = st.text_input(
+            "Email address",
+            value=default_email,
+            placeholder="your@email.com",
+            key="notification_email_input_tab",
+            label_visibility="collapsed"
+        )
+    with col_email2:
+        if st.button("💾 Save", key="save_email_tab", use_container_width=True):
+            if notification_email:
+                try:
+                    response = requests.put(
+                        f"{API_URL}/settings/",
+                        headers=get_auth_header(),
+                        json={"notification_email": notification_email}
+                    )
+                    if response.status_code == 200:
+                        st.session_state['notification_email'] = notification_email
+                        st.success("✅ Saved!")
+                    else:
+                        st.error("Failed")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+            else:
+                st.warning("Enter email")
     
     st.markdown("---")
     
@@ -1308,3 +1276,114 @@ with tab2:
                 st.caption("Unable to load delivery history")
         except Exception as e:
             st.caption(f"Error loading history")
+
+with tab3:
+    st.markdown("### 🔗 Integrations")
+    st.caption("Connect external services to enhance your news experience.")
+    
+    # --- Feedly Integration ---
+    st.markdown("#### 🦅 Feedly")
+    st.markdown("""
+    <div style="background: rgba(102, 126, 234, 0.08); padding: 1rem; border-radius: 12px; margin-bottom: 1rem;">
+        <p style="margin: 0; font-size: 0.9rem;">Connect your Feedly account to include personalized RSS feeds in your news digest.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Check Feedly status
+    feedly_configured = False
+    try:
+        response = requests.get(f"{API_URL}/feedly/status", timeout=5)
+        if response.status_code == 200:
+            feedly_configured = response.json().get('configured', False)
+    except:
+        pass
+    
+    if feedly_configured:
+        st.success("✅ Feedly connected")
+        
+        # Toggle to include Feedly articles
+        if 'include_feedly' not in st.session_state:
+            st.session_state.include_feedly = False
+        
+        include_feedly = st.checkbox(
+            "Include Feedly articles in news feed",
+            value=st.session_state.include_feedly,
+            key="feedly_toggle_tab"
+        )
+        
+        if include_feedly != st.session_state.include_feedly:
+            st.session_state.include_feedly = include_feedly
+            if 'news_data' in st.session_state:
+                del st.session_state['news_data']
+    else:
+        st.info("💡 Set FEEDLY_API_KEY in your .env file to connect Feedly.")
+    
+    st.markdown("---")
+    
+    # Future integrations placeholder
+    st.markdown("#### 🚀 More Integrations Coming Soon")
+    st.markdown("""
+    - **Pocket** - Save articles for later
+    - **Notion** - Export digests to your workspace
+    - **Slack** - Get notifications in your channels
+    """)
+
+with tab4:
+    st.markdown("### 🤖 AI Tools")
+    st.caption("Powerful AI features to help you understand and process news.")
+    
+    # Generate Digest Feature
+    st.markdown("#### 📋 Generate AI Digest")
+    st.markdown("""
+    <div style="background: rgba(102, 126, 234, 0.08); padding: 1rem; border-radius: 12px; margin-bottom: 1rem;">
+        <p style="margin: 0; font-size: 0.9rem;">Create an AI-powered summary of today's news from your selected categories and sources.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("✨ Generate Digest Now", key="generate_digest_btn", use_container_width=True):
+        with st.spinner("🤖 AI is analyzing and summarizing your news..."):
+            try:
+                response = requests.get(f"{API_URL}/digest", timeout=60)
+                if response.status_code == 200:
+                    digest_data = response.json()
+                    st.session_state['digest'] = digest_data
+                    st.success("✅ Digest generated!")
+                    st.rerun()
+                else:
+                    st.error("Failed to generate digest")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    # Display existing digest if available
+    if 'digest' in st.session_state:
+        st.markdown("---")
+        st.markdown("#### 📄 Your Latest Digest")
+        
+        digest_data = st.session_state['digest']
+        
+        # Metrics
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("📰 Articles", digest_data.get('article_count', 0))
+        with col2:
+            st.metric("📍 Sources", len(digest_data.get('sources', [])))
+        
+        # Content
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1.5rem; border-radius: 12px; margin: 1rem 0;">
+            <div style="background: white; padding: 1.25rem; border-radius: 8px;">
+        """, unsafe_allow_html=True)
+        
+        st.markdown(digest_data.get('digest', 'No digest content available.'))
+        
+        st.markdown("</div></div>", unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Future AI features placeholder
+    st.markdown("#### 🔮 Coming Soon")
+    st.markdown("""
+    - **Topic Deep Dive** - Get detailed analysis on specific topics
+    - **Sentiment Analysis** - Understand the tone of news coverage
+    - **Trend Detection** - Spot emerging stories
+    """)
