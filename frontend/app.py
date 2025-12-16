@@ -1050,6 +1050,54 @@ with tab1:
             <span style="color: #888; font-size: 0.85rem;">from your subscribed sources</span>
         </div>
         """, unsafe_allow_html=True)
+    
+    # --- Generate AI Digest Section ---
+    st.markdown("---")
+    st.markdown("#### ✨ Generate AI Digest")
+    
+    digest_col1, digest_col2 = st.columns([3, 1])
+    with digest_col1:
+        st.markdown("""
+        <div style="background: rgba(102, 126, 234, 0.08); padding: 0.75rem 1rem; border-radius: 10px;">
+            <p style="margin: 0; font-size: 0.85rem;">Create an AI-powered summary of today's news from your selected categories.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    with digest_col2:
+        if st.button("🤖 Generate", key="generate_digest_tab1", use_container_width=True):
+            with st.spinner("AI is summarizing..."):
+                try:
+                    response = requests.get(f"{API_URL}/digest", timeout=60)
+                    if response.status_code == 200:
+                        digest_data = response.json()
+                        st.session_state['digest'] = digest_data
+                        st.success("✅ Done!")
+                        st.rerun()
+                    else:
+                        st.error("Failed")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+    
+    # Display existing digest if available
+    if 'digest' in st.session_state:
+        digest_data = st.session_state['digest']
+        
+        # Compact digest display
+        with st.expander("📋 Your AI Digest", expanded=True):
+            # Metrics row
+            metric_col1, metric_col2, metric_col3 = st.columns(3)
+            with metric_col1:
+                st.metric("📰 Articles", digest_data.get('article_count', 0))
+            with metric_col2:
+                st.metric("📍 Sources", len(digest_data.get('sources', [])))
+            with metric_col3:
+                generated = digest_data.get('generated_at', '')
+                if generated:
+                    st.metric("🕐 Generated", generated.split('T')[0] if 'T' in generated else generated[:10])
+            
+            st.markdown("---")
+            
+            # Digest content
+            st.markdown(digest_data.get('digest', 'No digest content available.'))
 
     # --- Raw Source Data (Collapsible with AI Features) ---
     if 'news_data' in st.session_state and st.session_state.news_data:
