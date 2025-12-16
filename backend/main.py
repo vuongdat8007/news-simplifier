@@ -271,8 +271,7 @@ def get_summary_audio(request: SummarizeRequest, current_user = None):
 def check_premium(authorization: str = Header(None)):
     """Check if current user has premium access."""
     from auth import decode_token
-    from database import SessionLocal
-    from models import User
+    import firebase_models as fm
     
     if not authorization or not authorization.startswith("Bearer "):
         return {"is_premium": False, "is_admin": False}
@@ -284,16 +283,13 @@ def check_premium(authorization: str = Header(None)):
         return {"is_premium": False, "is_admin": False}
     
     email = payload.get("sub")
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.email == email).first()
-        if user:
-            return {
-                "is_premium": user.is_premium or False,
-                "is_admin": user.is_admin or False
-            }
-    finally:
-        db.close()
+    user = fm.get_user_by_email(email)
+    
+    if user:
+        return {
+            "is_premium": user.get("is_premium", False),
+            "is_admin": user.get("is_admin", False)
+        }
     
     return {"is_premium": False, "is_admin": False}
 
