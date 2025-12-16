@@ -1006,13 +1006,26 @@ with tab1:
         categories = st.session_state.get('selected_categories', ["top_stories", "technology", "business"])
         sources = st.session_state.get('selected_sources', [])
         
-        with st.spinner("🔍 Scanning news sources..."):
+        # Progress container for real-time updates
+        progress_container = st.container()
+        
+        with progress_container:
+            # Step 1: Fetch News
+            st.markdown("### 🚀 Loading Your News Dashboard...")
+            progress_bar = st.progress(0, text="Starting...")
+            status_text = st.empty()
+            
+            status_text.markdown("📡 **Step 1/4:** Fetching news from your sources...")
+            progress_bar.progress(10, text="Fetching news...")
+            
             # Fetch from categories
             category_news = fetch_news(categories)
+            progress_bar.progress(30, text="Categories loaded...")
             
             # Fetch from selected sources if any
             source_news = []
             if sources:
+                status_text.markdown("📰 **Step 1/4:** Fetching from specific publishers...")
                 try:
                     sources_param = ",".join(sources)
                     response = requests.get(f"{API_URL}/news/sources?sources={sources_param}", timeout=30)
@@ -1020,10 +1033,12 @@ with tab1:
                         source_news = response.json().get('news', [])
                 except Exception as e:
                     print(f"Error fetching from sources: {e}")
+            progress_bar.progress(40, text="Sources loaded...")
             
             # Fetch from Feedly if enabled
             feedly_news = []
             if st.session_state.get('include_feedly', False):
+                status_text.markdown("🦅 **Step 1/4:** Fetching from Feedly...")
                 try:
                     response = requests.get(f"{API_URL}/feedly/articles", timeout=30)
                     if response.status_code == 200:
@@ -1033,6 +1048,80 @@ with tab1:
             
             # Combine results
             st.session_state.news_data = category_news + source_news + feedly_news
+            progress_bar.progress(50, text=f"Found {len(st.session_state.news_data)} articles...")
+            
+            # Step 2: Generate AI Summary
+            if st.session_state.news_data:
+                status_text.markdown(f"🤖 **Step 2/4:** AI is summarizing {len(st.session_state.news_data)} articles...")
+                
+                from bs4 import BeautifulSoup
+                
+                # Prepare combined content
+                combined_content_parts = []
+                for article in st.session_state.news_data:
+                    title = article.get('title', '')
+                    raw_content = article.get('content', '') or article.get('summary', '')
+                    if raw_content:
+                        clean_content = BeautifulSoup(raw_content, 'html.parser').get_text(separator=' ', strip=True)
+                        combined_content_parts.append(f"**{title}**: {clean_content[:800]}")
+                
+                combined_text = "\n\n".join(combined_content_parts)
+                
+                try:
+                    response = requests.post(
+                        f"{API_URL}/summarize-combined",
+                        json={"text": combined_text},
+                        timeout=120
+                    )
+                    if response.status_code == 200:
+                        summary = response.json().get('summary', '')
+                        st.session_state['digest'] = {
+                            'digest': summary,
+                            'article_count': len(st.session_state.news_data),
+                            'sources': list(set(a.get('source', '') for a in st.session_state.news_data)),
+                            'generated_at': str(datetime.datetime.now().isoformat())
+                        }
+                        progress_bar.progress(70, text="AI summary complete...")
+                except Exception as e:
+                    print(f"Error generating summary: {e}")
+                
+                # Step 3: Generate PDF
+                if 'digest' in st.session_state and st.session_state['digest'].get('digest'):
+                    status_text.markdown("📄 **Step 3/4:** Generating PDF document...")
+                    try:
+                        response = requests.post(
+                            f"{API_URL}/summary/pdf",
+                            json={"text": st.session_state['digest']['digest']},
+                            timeout=30
+                        )
+                        if response.status_code == 200:
+                            st.session_state['digest_pdf'] = response.content
+                            progress_bar.progress(85, text="PDF ready...")
+                    except Exception as e:
+                        print(f"Error generating PDF: {e}")
+                    
+                    # Step 4: Generate Audio
+                    status_text.markdown("🎧 **Step 4/4:** Generating audio narration...")
+                    try:
+                        response = requests.post(
+                            f"{API_URL}/summary/audio",
+                            json={"text": st.session_state['digest']['digest']},
+                            timeout=60
+                        )
+                        if response.status_code == 200:
+                            st.session_state['digest_audio'] = response.content
+                            progress_bar.progress(100, text="All done!")
+                    except Exception as e:
+                        print(f"Error generating audio: {e}")
+            
+            # Complete
+            status_text.markdown("✅ **Complete!** Your personalized news digest is ready.")
+            progress_bar.progress(100, text="Dashboard ready!")
+            
+            # Small delay then clear progress
+            import time
+            time.sleep(1)
+            progress_container.empty()
 
     if not st.session_state.news_data:
         st.markdown("""
@@ -1122,47 +1211,55 @@ with tab1:
                 if generated:
                     st.caption("🕐 Just now")
             with col4:
-                # PDF Download button
-                if digest_text and st.button("📄 PDF", key="download_pdf", use_container_width=True):
-                    with st.spinner("Creating PDF..."):
-                        try:
-                            response = requests.post(
-                                f"{API_URL}/summary/pdf",
-                                json={"text": digest_text},
-                                timeout=30
-                            )
-                            if response.status_code == 200:
-                                st.download_button(
-                                    "📥 Download PDF",
-                                    data=response.content,
-                                    file_name="news_digest.pdf",
-                                    mime="application/pdf",
-                                    key="pdf_download_btn"
+                # PDF Download button - use pre-generated if available
+                if 'digest_pdf' in st.session_state and st.session_state['digest_pdf']:
+                    st.download_button(
+                        "📄 PDF",
+                        data=st.session_state['digest_pdf'],
+                        file_name="news_digest.pdf",
+                        mime="application/pdf",
+                        key="pdf_download_btn",
+                        use_container_width=True
+                    )
+                elif digest_text:
+                    if st.button("📄 PDF", key="gen_pdf", use_container_width=True):
+                        with st.spinner("Creating..."):
+                            try:
+                                response = requests.post(
+                                    f"{API_URL}/summary/pdf",
+                                    json={"text": digest_text},
+                                    timeout=30
                                 )
-                        except Exception as e:
-                            st.error(f"PDF Error: {e}")
+                                if response.status_code == 200:
+                                    st.session_state['digest_pdf'] = response.content
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
             with col5:
-                # Audio Download button
-                if digest_text and st.button("🎧 Audio", key="download_audio", use_container_width=True):
-                    with st.spinner("Creating audio..."):
-                        try:
-                            response = requests.post(
-                                f"{API_URL}/summary/audio",
-                                json={"text": digest_text},
-                                timeout=60
-                            )
-                            if response.status_code == 200:
-                                st.download_button(
-                                    "📥 Download MP3",
-                                    data=response.content,
-                                    file_name="news_digest.mp3",
-                                    mime="audio/mpeg",
-                                    key="audio_download_btn"
+                # Audio Download button - use pre-generated if available
+                if 'digest_audio' in st.session_state and st.session_state['digest_audio']:
+                    st.download_button(
+                        "🎧 Audio",
+                        data=st.session_state['digest_audio'],
+                        file_name="news_digest.mp3",
+                        mime="audio/mpeg",
+                        key="audio_download_btn",
+                        use_container_width=True
+                    )
+                elif digest_text:
+                    if st.button("🎧 Audio", key="gen_audio", use_container_width=True):
+                        with st.spinner("Creating..."):
+                            try:
+                                response = requests.post(
+                                    f"{API_URL}/summary/audio",
+                                    json={"text": digest_text},
+                                    timeout=60
                                 )
-                            else:
-                                st.error("Audio generation failed")
-                        except Exception as e:
-                            st.error(f"Audio Error: {e}")
+                                if response.status_code == 200:
+                                    st.session_state['digest_audio'] = response.content
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
             
             st.markdown("---")
             
