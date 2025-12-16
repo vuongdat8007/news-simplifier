@@ -210,22 +210,26 @@ def get_digest_audio():
 
 class SummarizeRequest(BaseModel):
     text: str
+    article_count: int = 10  # Default to 10 articles
 
 
 @app.post("/summarize-combined")
 def summarize_combined(request: SummarizeRequest):
-    """Summarize combined news excerpts using GPT-4o-mini."""
-    from services.openai_service import summarize_combined_excerpts
+    """Summarize combined news excerpts using GPT-4o-mini with dynamic word limit."""
+    from services.openai_service import summarize_combined_excerpts_with_word_limit
     
     if not request.text:
         raise HTTPException(status_code=400, detail="No text provided")
     
-    summary = summarize_combined_excerpts(request.text)
+    # Dynamic word limit: 100 words per article, minimum 300, maximum 2000
+    target_words = max(300, min(request.article_count * 100, 2000))
+    
+    summary = summarize_combined_excerpts_with_word_limit(request.text, target_words)
     
     if summary is None:
         raise HTTPException(status_code=500, detail="OpenAI API key not configured or error occurred")
     
-    return {"summary": summary}
+    return {"summary": summary, "target_words": target_words}
 
 
 @app.post("/summary/pdf")

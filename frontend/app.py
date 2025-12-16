@@ -1157,7 +1157,7 @@ with tab1:
                 try:
                     response = requests.post(
                         f"{API_URL}/summarize-combined",
-                        json={"text": combined_text},
+                        json={"text": combined_text, "article_count": len(st.session_state.news_data)},
                         timeout=120
                     )
                     if response.status_code == 200:
@@ -1260,7 +1260,7 @@ with tab1:
                     try:
                         response = requests.post(
                             f"{API_URL}/summarize-combined",
-                            json={"text": combined_text},
+                            json={"text": combined_text, "article_count": len(st.session_state.news_data)},
                             timeout=120
                         )
                         if response.status_code == 200:
