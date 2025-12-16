@@ -1348,6 +1348,42 @@ with tab1:
                             except Exception as e:
                                 st.error(f"Error: {e}")
             
+            # Email Me button row
+            email_col1, email_col2, email_col3 = st.columns([2, 2, 1])
+            with email_col1:
+                user_email = st.session_state.get('notification_email', st.session_state.get('user_email', ''))
+                email_to = st.text_input("📧 Email to:", value=user_email, key="digest_email_input", 
+                                        placeholder="your@email.com", label_visibility="collapsed")
+            with email_col2:
+                email_opt1, email_opt2 = st.columns(2)
+                with email_opt1:
+                    include_pdf_email = st.checkbox("PDF", value=True, key="email_pdf_check")
+                with email_opt2:
+                    include_audio_email = st.checkbox("Audio", value=False, key="email_audio_check")
+            with email_col3:
+                if st.button("📨 Send", key="send_digest_email_btn", use_container_width=True):
+                    if email_to and digest_text:
+                        with st.spinner("Sending..."):
+                            try:
+                                response = requests.post(
+                                    f"{API_URL}/summary/email",
+                                    json={
+                                        "summary": digest_text,
+                                        "email": email_to,
+                                        "include_pdf": include_pdf_email,
+                                        "include_audio": include_audio_email
+                                    },
+                                    timeout=120
+                                )
+                                if response.status_code == 200:
+                                    st.success("✅ Email sent!")
+                                else:
+                                    st.error("Failed to send")
+                            except Exception as e:
+                                st.error(f"Error: {e}")
+                    else:
+                        st.warning("Enter email address")
+            
             st.markdown("---")
             
             # Digest content
