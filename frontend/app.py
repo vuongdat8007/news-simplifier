@@ -526,9 +526,8 @@ if not is_authenticated():
 
 # --- Main App (only shown when authenticated) ---
 
-# Check premium status on load
-if 'is_premium' not in st.session_state or 'is_admin' not in st.session_state:
-    check_premium_status()
+# Check premium status on every page load (to pick up manual Firebase changes)
+check_premium_status()
 
 # Load theme from user settings
 if 'user_theme' not in st.session_state:
