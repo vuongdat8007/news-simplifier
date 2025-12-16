@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import dateutil.parser
+import datetime
 import html as html_module
 import os
 
@@ -1055,49 +1056,118 @@ with tab1:
     st.markdown("---")
     st.markdown("#### ✨ Generate AI Digest")
     
-    digest_col1, digest_col2 = st.columns([3, 1])
-    with digest_col1:
-        st.markdown("""
-        <div style="background: rgba(102, 126, 234, 0.08); padding: 0.75rem 1rem; border-radius: 10px;">
-            <p style="margin: 0; font-size: 0.85rem;">Create an AI-powered summary of today's news from your selected categories.</p>
-        </div>
-        """, unsafe_allow_html=True)
-    with digest_col2:
-        if st.button("🤖 Generate", key="generate_digest_tab1", use_container_width=True):
-            with st.spinner("AI is summarizing..."):
-                try:
-                    response = requests.get(f"{API_URL}/digest", timeout=60)
-                    if response.status_code == 200:
-                        digest_data = response.json()
-                        st.session_state['digest'] = digest_data
-                        st.success("✅ Done!")
-                        st.rerun()
-                    else:
-                        st.error("Failed")
-                except Exception as e:
-                    st.error(f"Error: {e}")
+    # Check if we have news data to summarize
+    if 'news_data' in st.session_state and st.session_state.news_data:
+        from bs4 import BeautifulSoup
+        
+        # Prepare combined content from fetched articles
+        combined_content_parts = []
+        for article in st.session_state.news_data:
+            title = article.get('title', '')
+            raw_content = article.get('content', '') or article.get('summary', '')
+            if raw_content:
+                clean_content = BeautifulSoup(raw_content, 'html.parser').get_text(separator=' ', strip=True)
+                combined_content_parts.append(f"**{title}**: {clean_content[:800]}")
+        
+        combined_text = "\n\n".join(combined_content_parts)
+        
+        digest_col1, digest_col2 = st.columns([3, 1])
+        with digest_col1:
+            st.markdown(f"""
+            <div style="background: rgba(102, 126, 234, 0.08); padding: 0.75rem 1rem; border-radius: 10px;">
+                <p style="margin: 0; font-size: 0.85rem;">Create an AI summary from <strong>{len(st.session_state.news_data)} articles</strong> in your News Feed.</p>
+            </div>
+            """, unsafe_allow_html=True)
+        with digest_col2:
+            if st.button("🤖 Generate", key="generate_digest_tab1", use_container_width=True):
+                with st.spinner("AI is summarizing your news..."):
+                    try:
+                        response = requests.post(
+                            f"{API_URL}/summarize-combined",
+                            json={"text": combined_text},
+                            timeout=120
+                        )
+                        if response.status_code == 200:
+                            summary = response.json().get('summary', '')
+                            st.session_state['digest'] = {
+                                'digest': summary,
+                                'article_count': len(st.session_state.news_data),
+                                'sources': list(set(a.get('source', '') for a in st.session_state.news_data)),
+                                'generated_at': str(datetime.datetime.now().isoformat())
+                            }
+                            st.success("✅ Done!")
+                            st.rerun()
+                        else:
+                            st.error(f"Failed: {response.text}")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+    else:
+        st.info("📡 Fetch news articles first using the filters above, then generate your AI digest.")
     
     # Display existing digest if available
     if 'digest' in st.session_state:
         digest_data = st.session_state['digest']
+        digest_text = digest_data.get('digest', '')
         
         # Compact digest display
         with st.expander("📋 Your AI Digest", expanded=True):
-            # Metrics row
-            metric_col1, metric_col2, metric_col3 = st.columns(3)
-            with metric_col1:
+            # Metrics and action buttons row
+            col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 1])
+            with col1:
                 st.metric("📰 Articles", digest_data.get('article_count', 0))
-            with metric_col2:
+            with col2:
                 st.metric("📍 Sources", len(digest_data.get('sources', [])))
-            with metric_col3:
+            with col3:
                 generated = digest_data.get('generated_at', '')
                 if generated:
-                    st.metric("🕐 Generated", generated.split('T')[0] if 'T' in generated else generated[:10])
+                    st.caption("🕐 Just now")
+            with col4:
+                # PDF Download button
+                if digest_text and st.button("📄 PDF", key="download_pdf", use_container_width=True):
+                    with st.spinner("Creating PDF..."):
+                        try:
+                            response = requests.post(
+                                f"{API_URL}/summary/pdf",
+                                json={"text": digest_text},
+                                timeout=30
+                            )
+                            if response.status_code == 200:
+                                st.download_button(
+                                    "📥 Download PDF",
+                                    data=response.content,
+                                    file_name="news_digest.pdf",
+                                    mime="application/pdf",
+                                    key="pdf_download_btn"
+                                )
+                        except Exception as e:
+                            st.error(f"PDF Error: {e}")
+            with col5:
+                # Audio Download button
+                if digest_text and st.button("🎧 Audio", key="download_audio", use_container_width=True):
+                    with st.spinner("Creating audio..."):
+                        try:
+                            response = requests.post(
+                                f"{API_URL}/summary/audio",
+                                json={"text": digest_text},
+                                timeout=60
+                            )
+                            if response.status_code == 200:
+                                st.download_button(
+                                    "📥 Download MP3",
+                                    data=response.content,
+                                    file_name="news_digest.mp3",
+                                    mime="audio/mpeg",
+                                    key="audio_download_btn"
+                                )
+                            else:
+                                st.error("Audio generation failed")
+                        except Exception as e:
+                            st.error(f"Audio Error: {e}")
             
             st.markdown("---")
             
             # Digest content
-            st.markdown(digest_data.get('digest', 'No digest content available.'))
+            st.markdown(digest_text if digest_text else 'No digest content available.')
 
     # --- Raw Source Data (Collapsible with AI Features) ---
     if 'news_data' in st.session_state and st.session_state.news_data:
