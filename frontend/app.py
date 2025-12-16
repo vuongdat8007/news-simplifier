@@ -888,6 +888,63 @@ if 'digest' in st.session_state:
     </div>
     """, unsafe_allow_html=True)
     
+    # Action buttons row: Download and Email
+    st.markdown("")
+    btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([1, 1, 1, 2])
+    
+    with btn_col1:
+        if 'digest_pdf' in st.session_state and st.session_state['digest_pdf']:
+            st.download_button("📄 Download PDF", data=st.session_state['digest_pdf'], 
+                             file_name="news_digest.pdf", mime="application/pdf", 
+                             key="main_pdf_btn", use_container_width=True)
+    
+    with btn_col2:
+        if 'digest_audio' in st.session_state and st.session_state['digest_audio']:
+            st.download_button("🎧 Download Audio", data=st.session_state['digest_audio'],
+                             file_name="news_digest.mp3", mime="audio/mpeg",
+                             key="main_audio_btn", use_container_width=True)
+    
+    with btn_col3:
+        pass  # Spacer
+    
+    with btn_col4:
+        # Email Me button with options
+        user_email = st.session_state.get('notification_email', st.session_state.get('user_email', ''))
+        
+        with st.expander("📧 Email Me This Digest", expanded=False):
+            email_to = st.text_input("Send to:", value=user_email, key="email_digest_to", 
+                                    placeholder="your@email.com")
+            
+            email_opt_col1, email_opt_col2 = st.columns(2)
+            with email_opt_col1:
+                include_pdf = st.checkbox("Include PDF", value=True, key="email_include_pdf")
+            with email_opt_col2:
+                include_audio = st.checkbox("Include Audio", value=False, key="email_include_audio")
+            
+            if st.button("📨 Send Email", key="send_digest_email", use_container_width=True):
+                if email_to and digest_text:
+                    with st.spinner("Sending email..."):
+                        try:
+                            response = requests.post(
+                                f"{API_URL}/summary/email",
+                                json={
+                                    "summary": digest_text,
+                                    "email": email_to,
+                                    "include_pdf": include_pdf,
+                                    "include_audio": include_audio
+                                },
+                                timeout=120
+                            )
+                            if response.status_code == 200:
+                                result = response.json()
+                                st.success(f"✅ {result.get('message', 'Email sent!')}")
+                            else:
+                                st.error(f"Failed: {response.text}")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                else:
+                    st.warning("Please enter an email address")
+    
     st.markdown("---")
 
 # --- Define Categories and Sources ---

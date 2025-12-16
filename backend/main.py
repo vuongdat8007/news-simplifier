@@ -267,6 +267,62 @@ def get_summary_audio(request: SummarizeRequest, current_user = None):
     )
 
 
+class EmailDigestRequest(BaseModel):
+    summary: str
+    email: str
+    include_pdf: bool = True
+    include_audio: bool = False
+
+
+@app.post("/summary/email")
+def email_digest(request: EmailDigestRequest):
+    """Email the digest to the user with optional PDF and audio attachments."""
+    from services.email_service import send_news_summary_email
+    from services.pdf_service import create_pdf
+    from services.tts_service import text_to_speech_openai
+    
+    if not request.summary:
+        raise HTTPException(status_code=400, detail="No summary provided")
+    
+    if not request.email:
+        raise HTTPException(status_code=400, detail="No email provided")
+    
+    pdf_bytes = None
+    audio_bytes = None
+    
+    # Generate PDF if requested
+    if request.include_pdf:
+        try:
+            pdf_bytes = create_pdf(request.summary, "Daily News Digest")
+        except Exception as e:
+            print(f"Error generating PDF: {e}")
+    
+    # Generate audio if requested
+    if request.include_audio:
+        try:
+            audio_bytes = text_to_speech_openai(request.summary, voice="nova")
+        except Exception as e:
+            print(f"Error generating audio: {e}")
+    
+    # Send email
+    success = send_news_summary_email(
+        summary=request.summary,
+        pdf_bytes=pdf_bytes,
+        audio_bytes=audio_bytes,
+        recipients=[request.email]
+    )
+    
+    if success:
+        attachments = []
+        if pdf_bytes:
+            attachments.append("PDF")
+        if audio_bytes:
+            attachments.append("Audio")
+        return {"message": f"Digest sent to {request.email}", "attachments": attachments}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to send email. Check email configuration.")
+
+
 @app.get("/check-premium")
 def check_premium(authorization: str = Header(None)):
     """Check if current user has premium access."""
