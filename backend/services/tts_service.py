@@ -63,10 +63,7 @@ def _clean_text_for_speech(text: str) -> str:
     text = re.sub(r'\n{3,}', '\n\n', text)
     text = re.sub(r' +', ' ', text)
     
-    # Add pauses after sentences for better flow
-    text = text.replace('. ', '... ')
-    text = text.replace('? ', '?... ')
-    text = text.replace('! ', '!... ')
+    # Note: Removed artificial pauses - OpenAI TTS handles natural pauses automatically
     
     return text.strip()
 
@@ -102,6 +99,7 @@ def text_to_speech_openai(text: str, voice: str = 'alloy') -> bytes:
         print(f"[DEBUG] Generating OpenAI TTS with voice: {voice}")
         print(f"[DEBUG] Text length: {len(clean_text)} characters")
         
+        # Using tts-1 standard model
         response = client.audio.speech.create(
             model="tts-1",
             voice=voice,
