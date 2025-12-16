@@ -1308,32 +1308,6 @@ with tab2:
                 st.caption("Unable to load delivery history")
         except Exception as e:
             st.caption(f"Error loading history")
-    
-    digest_data = st.session_state['digest']
-    
-    # Metadata
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("📰 Articles", digest_data.get('article_count', 0))
-    with col2:
-        st.metric("📍 Sources", len(digest_data.get('sources', [])))
-    with col3:
-        generated_at = digest_data.get('generated_at', '')
-        if generated_at:
-            # Simple date formatting
-            st.metric("🕐 Generated", generated_at.split('T')[0] if 'T' in generated_at else generated_at[:10])
-    
-    # Digest content in styled box
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 12px; margin: 1rem 0;">
-        <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-    """, unsafe_allow_html=True)
-    
-    st.markdown(digest_data.get('digest', 'No digest content available.'))
-    
-    st.markdown("</div></div>", unsafe_allow_html=True)
-    
-    st.markdown("---")
 
 # --- Define Categories and Sources ---
 CATEGORIES = {
