@@ -781,254 +781,15 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Categories and Sources moved to main content area
-    
-    # --- Feedly Integration ---
-    st.markdown("### 🦅 Feedly")
-    st.caption("Connect your Feedly account")
-    
-    # Check Feedly status
-    feedly_configured = False
-    try:
-        response = requests.get(f"{API_URL}/feedly/status", timeout=5)
-        if response.status_code == 200:
-            feedly_configured = response.json().get('configured', False)
-    except:
-        pass
-    
-    if feedly_configured:
-        st.success("✅ Feedly connected")
-        
-        # Toggle to include Feedly articles
-        if 'include_feedly' not in st.session_state:
-            st.session_state.include_feedly = False
-        
-        include_feedly = st.checkbox(
-            "Include Feedly articles",
-            value=st.session_state.include_feedly,
-            key="feedly_toggle"
-        )
-        
-        if include_feedly != st.session_state.include_feedly:
-            st.session_state.include_feedly = include_feedly
-            if 'news_data' in st.session_state:
-                del st.session_state['news_data']
-    else:
-        st.info("Set FEEDLY_API_KEY in .env to connect")
-    
-    st.markdown("---")
-    
-    # Email Subscription Section
-    st.markdown("### 📧 Email Subscription")
-    st.caption("Receive news digest in your inbox")
-    
-    # Get current email from settings or use logged-in email
-    default_email = st.session_state.get('notification_email', st.session_state.get('user_email', ''))
-    
-    notification_email = st.text_input(
-        "Email address",
-        value=default_email,
-        placeholder="your@email.com",
-        key="notification_email_input"
-    )
-    
-    if st.button("💾 Save Email", key="save_email", use_container_width=True):
-        if notification_email:
-            try:
-                response = requests.put(
-                    f"{API_URL}/settings/",
-                    headers=get_auth_header(),
-                    json={"notification_email": notification_email}
-                )
-                if response.status_code == 200:
-                    st.session_state['notification_email'] = notification_email
-                    st.success("✅ Email saved!")
-                else:
-                    st.error("Failed to save email")
-            except Exception as e:
-                st.error(f"Error: {e}")
-        else:
-            st.warning("Please enter an email address")
-    
-    st.markdown("---")
-    
-    # --- Scheduled Email Settings ---
-    st.markdown("### ⏰ Scheduled Digest")
-    st.caption("Automatic news summary delivery")
-    
-    # Load scheduler settings from user settings
-    if 'scheduler_settings' not in st.session_state:
-        user_settings = fetch_user_settings()
-        if user_settings:
-            st.session_state['scheduler_settings'] = {
-                'enabled': user_settings.get('scheduler_enabled', False),
-                'interval': user_settings.get('scheduler_interval_hours', 12),
-                'max_items': user_settings.get('max_items_per_category', 5),
-                'word_count': user_settings.get('target_word_count', 500)
-            }
-        else:
-            st.session_state['scheduler_settings'] = {
-                'enabled': False,
-                'interval': 12,
-                'max_items': 5,
-                'word_count': 500
-            }
-    
-    sched = st.session_state['scheduler_settings']
-    
-    # Enable/Disable scheduler
-    scheduler_enabled = st.checkbox(
-        "Enable scheduled emails",
-        value=sched['enabled'],
-        key="scheduler_enabled_toggle"
-    )
-    
-    if scheduler_enabled:
-        # Interval selection
-        interval_options = {6: "Every 6 hours", 12: "Every 12 hours", 24: "Daily", 48: "Every 2 days"}
-        current_interval_label = interval_options.get(sched['interval'], "Every 12 hours")
-        
-        selected_interval_label = st.selectbox(
-            "Delivery frequency",
-            options=list(interval_options.values()),
-            index=list(interval_options.values()).index(current_interval_label),
-            key="scheduler_interval_select"
-        )
-        selected_interval = [k for k, v in interval_options.items() if v == selected_interval_label][0]
-        
-        # Max items per category
-        max_items = st.slider(
-            "Max articles per category",
-            min_value=1,
-            max_value=10,
-            value=sched['max_items'],
-            key="scheduler_max_items"
-        )
-        
-        # Display current adaptive word count (read-only)
-        st.markdown(f"""
-        <div style="background: rgba(102, 126, 234, 0.1); padding: 0.75rem; border-radius: 8px; margin: 0.5rem 0;">
-            <p style="margin: 0; font-size: 0.85rem; opacity: 0.8;">📊 Current summary length</p>
-            <p style="margin: 0.25rem 0 0 0; font-weight: 600; font-size: 1.1rem;">{sched['word_count']} words</p>
-            <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem; opacity: 0.6;">Adjusts based on your feedback</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Save scheduler settings button
-        if st.button("💾 Save Schedule", key="save_scheduler", use_container_width=True):
-            try:
-                response = requests.put(
-                    f"{API_URL}/settings/",
-                    headers=get_auth_header(),
-                    json={
-                        "scheduler_enabled": True,
-                        "scheduler_interval_hours": selected_interval,
-                        "max_items_per_category": max_items
-                    }
-                )
-                if response.status_code == 200:
-                    st.session_state['scheduler_settings'] = {
-                        'enabled': True,
-                        'interval': selected_interval,
-                        'max_items': max_items,
-                        'word_count': sched['word_count']
-                    }
-                    st.success("✅ Schedule saved!")
-                else:
-                    st.error(f"Failed to save: {response.text}")
-            except Exception as e:
-                st.error(f"Error: {e}")
-    
-    # Update enabled state if toggled off
-    if scheduler_enabled != sched['enabled']:
-        try:
-            requests.put(
-                f"{API_URL}/settings/",
-                headers=get_auth_header(),
-                json={"scheduler_enabled": scheduler_enabled}
-            )
-            st.session_state['scheduler_settings']['enabled'] = scheduler_enabled
-            st.rerun()
-        except:
-            pass
-    
-    # Premium badge for audio
-    if st.session_state.get('is_premium', False):
-        st.markdown("""
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.5rem 0.75rem; border-radius: 8px; margin-top: 0.5rem;">
-            <p style="margin: 0; font-size: 0.8rem;">🎧 Premium: Audio included in emails</p>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.caption("💎 Upgrade to Premium for audio summaries")
-    
-    st.markdown("---")
-    
-    # --- Delivery History Section ---
-    st.markdown("### 📧 Delivery History")
-    
-    with st.expander("View past deliveries", expanded=False):
-        try:
-            response = requests.get(
-                f"{API_URL}/deliveries/",
-                headers=get_auth_header(),
-                params={"limit": 5}
-            )
-            if response.status_code == 200:
-                data = response.json()
-                deliveries = data.get('deliveries', [])
-                total = data.get('total', 0)
-                
-                if deliveries:
-                    st.caption(f"Showing {len(deliveries)} of {total} deliveries")
-                    
-                    for delivery in deliveries:
-                        # Format date
-                        delivered_at = delivery.get('delivered_at', '')
-                        if delivered_at:
-                            try:
-                                dt = dateutil.parser.parse(delivered_at)
-                                date_str = dt.strftime("%b %d, %Y %I:%M %p")
-                            except:
-                                date_str = delivered_at[:16]
-                        else:
-                            date_str = "Unknown"
-                        
-                        # Feedback status
-                        feedback = delivery.get('feedback_received')
-                        if feedback:
-                            feedback_icon = {"too_short": "📈", "just_right": "✅", "too_long": "📉"}.get(feedback, "")
-                            feedback_text = f"{feedback_icon} {feedback.replace('_', ' ').title()}"
-                        else:
-                            feedback_text = "⏳ Awaiting"
-                        
-                        # Word count info
-                        target = delivery.get('word_count_target', '-')
-                        actual = delivery.get('actual_word_count', '-')
-                        
-                        # Audio badge
-                        audio_badge = "🎧" if delivery.get('audio_included') else ""
-                        
-                        st.markdown(f"""
-                        <div style="background: rgba(102, 126, 234, 0.1); padding: 0.75rem; border-radius: 8px; margin-bottom: 0.5rem;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <span style="font-size: 0.8rem; font-weight: 600;">{date_str}</span>
-                                <span style="font-size: 0.75rem;">{audio_badge}</span>
-                            </div>
-                            <div style="display: flex; justify-content: space-between; margin-top: 0.25rem;">
-                                <span style="font-size: 0.75rem; opacity: 0.8;">Words: {actual}/{target}</span>
-                                <span style="font-size: 0.75rem;">{feedback_text}</span>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.info("No deliveries yet. Enable scheduling to receive email digests!")
-            elif response.status_code == 401:
-                st.caption("Login required to view history")
-            else:
-                st.caption("Unable to load delivery history")
-        except Exception as e:
-            st.caption(f"Error loading history")
+    # About section with AI branding
+    st.markdown("""
+    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 12px; font-size: 0.8rem;">
+        <p style="margin: 0 0 0.75rem 0; font-weight: 600;">About</p>
+        <p style="margin: 0; opacity: 0.8; line-height: 1.5;">
+            Powered by GPT-4o-mini, this assistant curates and simplifies news from top sources.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
     
     st.markdown("---")
     
@@ -1093,23 +854,460 @@ with st.sidebar:
                                         st.rerun()
         except Exception as e:
             st.error(f"Error loading users: {e}")
-    
-    st.markdown("---")
-    
-    # About section with AI branding
-    st.markdown("""
-    <div style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 12px; font-size: 0.8rem;">
-        <p style="margin: 0 0 0.75rem 0; font-weight: 600;">About</p>
-        <p style="margin: 0; opacity: 0.8; line-height: 1.5;">
-            Powered by GPT-4o-mini, this assistant curates and simplifies news from top sources.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
 
 
 # --- Display Digest if Generated ---
 if 'digest' in st.session_state:
     st.markdown("## 📋 Your Daily Digest")
+    
+    digest_data = st.session_state['digest']
+    
+    # Metadata
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("📰 Articles", digest_data.get('article_count', 0))
+    with col2:
+        st.metric("📍 Sources", len(digest_data.get('sources', [])))
+    with col3:
+        generated_at = digest_data.get('generated_at', '')
+        if generated_at:
+            # Simple date formatting
+            st.metric("🕐 Generated", generated_at.split('T')[0] if 'T' in generated_at else generated_at[:10])
+    
+    # Digest content in styled box
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 12px; margin: 1rem 0;">
+        <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+    """, unsafe_allow_html=True)
+    
+    st.markdown(digest_data.get('digest', 'No digest content available.'))
+    
+    st.markdown("</div></div>", unsafe_allow_html=True)
+    
+    st.markdown("---")
+
+# --- Define Categories and Sources ---
+CATEGORIES = {
+    "top_stories": "📰 Top Stories",
+    "world": "🌍 World",
+    "nation": "🇺🇸 U.S.",
+    "business": "💼 Business",
+    "technology": "💻 Technology",
+    "entertainment": "🎬 Entertainment",
+    "sports": "⚽ Sports",
+    "science": "🔬 Science",
+    "health": "🏥 Health"
+}
+
+NEWS_SOURCES = {
+    "reuters": "📡 Reuters",
+    "ap_news": "📰 Associated Press",
+    "npr": "🎙️ NPR",
+    "bbc": "🇬🇧 BBC News",
+    "fierce_healthcare": "🏥 Fierce Healthcare",
+    "beckers_hospital": "🏨 Becker's Hospital",
+    "healthcare_finance_news": "💵 Healthcare Finance",
+    "techcrunch": "💻 TechCrunch",
+    "wired": "🔌 Wired",
+    "coindesk": "₿ CoinDesk",
+    "cointelegraph": "⛓️ Cointelegraph"
+}
+
+# Initialize selected categories from user settings
+if 'selected_categories' not in st.session_state:
+    user_settings = fetch_user_settings()
+    if user_settings and 'categories' in user_settings:
+        st.session_state.selected_categories = user_settings['categories']
+    else:
+        st.session_state.selected_categories = ["top_stories", "technology", "business"]
+
+if 'selected_sources' not in st.session_state:
+    st.session_state.selected_sources = []
+
+# --- Main Header ---
+st.markdown("""
+<div style="margin-bottom: 1.5rem;">
+    <h1 style="margin: 0; font-size: 2rem;">👋 Welcome back!</h1>
+    <p style="color: #666; margin: 0.5rem 0 0 0; font-size: 1.1rem;">Here's what's happening in the news today</p>
+</div>
+""", unsafe_allow_html=True)
+
+# --- Filter Bar: Categories & Sources ---
+st.markdown("""
+<style>
+    .filter-bar {
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+        border: 1px solid rgba(102, 126, 234, 0.2);
+        border-radius: 16px;
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+    .filter-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #4a5568;
+        margin-bottom: 0.5rem;
+    }
+</style>
+<div class="filter-bar">
+</div>
+""", unsafe_allow_html=True)
+
+# Filter controls in columns
+filter_col1, filter_col2, filter_col3 = st.columns([3, 3, 1])
+
+with filter_col1:
+    st.markdown("<p class='filter-label'>🏷️ Categories</p>", unsafe_allow_html=True)
+    selected = st.multiselect(
+        "Select categories",
+        options=list(CATEGORIES.keys()),
+        default=st.session_state.selected_categories,
+        format_func=lambda x: CATEGORIES[x],
+        label_visibility="collapsed",
+        key="main_categories"
+    )
+    if selected != st.session_state.selected_categories:
+        st.session_state.selected_categories = selected
+        save_user_settings({"categories": selected})
+        if 'news_data' in st.session_state:
+            del st.session_state['news_data']
+
+with filter_col2:
+    st.markdown("<p class='filter-label'>📡 Sources</p>", unsafe_allow_html=True)
+    selected_sources = st.multiselect(
+        "Select sources",
+        options=list(NEWS_SOURCES.keys()),
+        default=st.session_state.selected_sources,
+        format_func=lambda x: NEWS_SOURCES[x],
+        label_visibility="collapsed",
+        key="main_sources"
+    )
+    if selected_sources != st.session_state.selected_sources:
+        st.session_state.selected_sources = selected_sources
+        if 'news_data' in st.session_state:
+            del st.session_state['news_data']
+
+with filter_col3:
+    st.markdown("<p class='filter-label'>&nbsp;</p>", unsafe_allow_html=True)
+    if st.button("🔄 Refresh", key="refresh_main", use_container_width=True):
+        if 'news_data' in st.session_state:
+            del st.session_state['news_data']
+        st.rerun()
+
+# --- Main Content Tabs ---
+tab1, tab2, tab3 = st.tabs(["📰 News Feed", "⚙️ Settings", "🤖 AI Tools"])
+
+with tab1:
+    if 'news_data' not in st.session_state:
+        # Get selected categories and sources from session state
+        categories = st.session_state.get('selected_categories', ["top_stories", "technology", "business"])
+        sources = st.session_state.get('selected_sources', [])
+        
+        with st.spinner("🔍 Scanning news sources..."):
+            # Fetch from categories
+            category_news = fetch_news(categories)
+            
+            # Fetch from selected sources if any
+            source_news = []
+            if sources:
+                try:
+                    sources_param = ",".join(sources)
+                    response = requests.get(f"{API_URL}/news/sources?sources={sources_param}", timeout=30)
+                    if response.status_code == 200:
+                        source_news = response.json().get('news', [])
+                except Exception as e:
+                    print(f"Error fetching from sources: {e}")
+            
+            # Fetch from Feedly if enabled
+            feedly_news = []
+            if st.session_state.get('include_feedly', False):
+                try:
+                    response = requests.get(f"{API_URL}/feedly/articles", timeout=30)
+                    if response.status_code == 200:
+                        feedly_news = response.json().get('news', [])
+                except Exception as e:
+                    print(f"Error fetching from Feedly: {e}")
+            
+            # Combine results
+            st.session_state.news_data = category_news + source_news + feedly_news
+
+    if not st.session_state.news_data:
+        st.markdown("""
+        <div class="ai-message">
+            <p style="margin: 0;">I couldn't find any news articles. Please make sure the backend server is running on port 8000.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # News count indicator
+    if st.session_state.news_data:
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem;">
+            <span style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.35rem 0.75rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600;">
+                {len(st.session_state.news_data)} articles
+        </span>
+            <span style="color: #888; font-size: 0.85rem;">from your subscribed sources</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # --- Raw Source Data (Collapsible with AI Features) ---
+    if 'news_data' in st.session_state and st.session_state.news_data:
+        st.markdown("---")
+        with st.expander("📰 Combined Raw Source Data", expanded=False):
+            st.caption("All RSS excerpts combined with AI summarization options")
+            
+            # Stats
+            articles_count = len(st.session_state.news_data)
+            articles_with_content = sum(1 for a in st.session_state.news_data if a.get('content') or a.get('summary'))
+
+with tab2:
+    st.markdown("### ⚙️ User Settings")
+
+    # --- Feedly Integration ---
+    st.markdown("#### 🦅 Feedly Integration")
+    st.caption("Connect your Feedly account to include your personalized feeds.")
+    
+    # Check Feedly status
+    feedly_configured = False
+    try:
+        response = requests.get(f"{API_URL}/feedly/status", timeout=5)
+        if response.status_code == 200:
+            feedly_configured = response.json().get('configured', False)
+    except:
+        pass
+    
+    if feedly_configured:
+        st.success("✅ Feedly connected")
+        
+        # Toggle to include Feedly articles
+        if 'include_feedly' not in st.session_state:
+            st.session_state.include_feedly = False
+        
+        include_feedly = st.checkbox(
+            "Include Feedly articles in news feed",
+            value=st.session_state.include_feedly,
+            key="feedly_toggle_tab"
+        )
+        
+        if include_feedly != st.session_state.include_feedly:
+            st.session_state.include_feedly = include_feedly
+            if 'news_data' in st.session_state:
+                del st.session_state['news_data']
+    else:
+        st.info("Set FEEDLY_API_KEY in .env to connect Feedly.")
+    
+    st.markdown("---")
+    
+    # Email Subscription Section
+    st.markdown("#### 📧 Email Subscription")
+    st.caption("Receive news digest in your inbox.")
+    
+    # Get current email from settings or use logged-in email
+    default_email = st.session_state.get('notification_email', st.session_state.get('user_email', ''))
+    
+    notification_email = st.text_input(
+        "Email address for notifications",
+        value=default_email,
+        placeholder="your@email.com",
+        key="notification_email_input_tab"
+    )
+    
+    if st.button("💾 Save Email", key="save_email_tab", use_container_width=True):
+        if notification_email:
+            try:
+                response = requests.put(
+                    f"{API_URL}/settings/",
+                    headers=get_auth_header(),
+                    json={"notification_email": notification_email}
+                )
+                if response.status_code == 200:
+                    st.session_state['notification_email'] = notification_email
+                    st.success("✅ Email saved!")
+                else:
+                    st.error("Failed to save email")
+            except Exception as e:
+                st.error(f"Error: {e}")
+        else:
+            st.warning("Please enter an email address")
+    
+    st.markdown("---")
+    
+    # --- Scheduled Email Settings ---
+    st.markdown("#### ⏰ Scheduled Digest")
+    st.caption("Automatic news summary delivery to your inbox.")
+    
+    # Load scheduler settings from user settings
+    if 'scheduler_settings' not in st.session_state:
+        user_settings = fetch_user_settings()
+        if user_settings:
+            st.session_state['scheduler_settings'] = {
+                'enabled': user_settings.get('scheduler_enabled', False),
+                'interval': user_settings.get('scheduler_interval_hours', 12),
+                'max_items': user_settings.get('max_items_per_category', 5),
+                'word_count': user_settings.get('target_word_count', 500)
+            }
+        else:
+            st.session_state['scheduler_settings'] = {
+                'enabled': False,
+                'interval': 12,
+                'max_items': 5,
+                'word_count': 500
+            }
+    
+    sched = st.session_state['scheduler_settings']
+    
+    # Enable/Disable scheduler
+    scheduler_enabled = st.checkbox(
+        "Enable scheduled emails",
+        value=sched['enabled'],
+        key="scheduler_enabled_toggle_tab"
+    )
+    
+    if scheduler_enabled:
+        # Interval selection
+        interval_options = {6: "Every 6 hours", 12: "Every 12 hours", 24: "Daily", 48: "Every 2 days"}
+        current_interval_label = interval_options.get(sched['interval'], "Every 12 hours")
+        
+        selected_interval_label = st.selectbox(
+            "Delivery frequency",
+            options=list(interval_options.values()),
+            index=list(interval_options.values()).index(current_interval_label),
+            key="scheduler_interval_select_tab"
+        )
+        selected_interval = [k for k, v in interval_options.items() if v == selected_interval_label][0]
+        
+        # Max items per category
+        max_items = st.slider(
+            "Max articles per category",
+            min_value=1,
+            max_value=10,
+            value=sched['max_items'],
+            key="scheduler_max_items_tab"
+        )
+        
+        # Display current adaptive word count (read-only)
+        st.markdown(f"""
+        <div style="background: rgba(102, 126, 234, 0.1); padding: 0.75rem; border-radius: 8px; margin: 0.5rem 0;">
+            <p style="margin: 0; font-size: 0.85rem; opacity: 0.8;">📊 Current summary length</p>
+            <p style="margin: 0.25rem 0 0 0; font-weight: 600; font-size: 1.1rem;">{sched['word_count']} words</p>
+            <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem; opacity: 0.6;">Adjusts based on your feedback</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Save scheduler settings button
+        if st.button("💾 Save Schedule", key="save_scheduler_tab", use_container_width=True):
+            try:
+                response = requests.put(
+                    f"{API_URL}/settings/",
+                    headers=get_auth_header(),
+                    json={
+                        "scheduler_enabled": True,
+                        "scheduler_interval_hours": selected_interval,
+                        "max_items_per_category": max_items
+                    }
+                )
+                if response.status_code == 200:
+                    st.session_state['scheduler_settings'] = {
+                        'enabled': True,
+                        'interval': selected_interval,
+                        'max_items': max_items,
+                        'word_count': sched['word_count']
+                    }
+                    st.success("✅ Schedule saved!")
+                else:
+                    st.error(f"Failed to save: {response.text}")
+            except Exception as e:
+                st.error(f"Error: {e}")
+    
+    # Update enabled state if toggled off
+    if scheduler_enabled != sched['enabled']:
+        try:
+            requests.put(
+                f"{API_URL}/settings/",
+                headers=get_auth_header(),
+                json={"scheduler_enabled": scheduler_enabled}
+            )
+            st.session_state['scheduler_settings']['enabled'] = scheduler_enabled
+            st.rerun()
+        except:
+            pass
+    
+    # Premium badge for audio
+    if st.session_state.get('is_premium', False):
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.5rem 0.75rem; border-radius: 8px; margin-top: 0.5rem;">
+            <p style="margin: 0; font-size: 0.8rem;">🎧 Premium: Audio included in emails</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.caption("💎 Upgrade to Premium for audio summaries")
+    
+    st.markdown("---")
+    
+    # --- Delivery History Section ---
+    st.markdown("#### 📧 Delivery History")
+    
+    with st.expander("View past deliveries", expanded=False):
+        try:
+            response = requests.get(
+                f"{API_URL}/deliveries/",
+                headers=get_auth_header(),
+                params={"limit": 5}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                deliveries = data.get('deliveries', [])
+                total = data.get('total', 0)
+                
+                if deliveries:
+                    st.caption(f"Showing {len(deliveries)} of {total} deliveries")
+                    
+                    for delivery in deliveries:
+                        # Format date
+                        delivered_at = delivery.get('delivered_at', '')
+                        if delivered_at:
+                            try:
+                                dt = dateutil.parser.parse(delivered_at)
+                                date_str = dt.strftime("%b %d, %Y %I:%M %p")
+                            except:
+                                date_str = "Unknown"
+                        else:
+                            date_str = "Unknown"
+                        
+                        # Feedback status
+                        feedback = delivery.get('feedback_received')
+                        if feedback:
+                            feedback_icon = {"too_short": "📈", "just_right": "✅", "too_long": "📉"}.get(feedback, "")
+                            feedback_text = f"{feedback_icon} {feedback.replace('_', ' ').title()}"
+                        else:
+                            feedback_text = "⏳ Awaiting"
+                        
+                        # Word count info
+                        target = delivery.get('word_count_target', '-')
+                        actual = delivery.get('actual_word_count', '-')
+                        
+                        # Audio badge
+                        audio_badge = "🎧" if delivery.get('audio_included') else ""
+                        
+                        st.markdown(f"""
+                        <div style="background: rgba(102, 126, 234, 0.1); padding: 0.75rem; border-radius: 8px; margin-bottom: 0.5rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 0.8rem; font-weight: 600;">{date_str}</span>
+                                <span style="font-size: 0.75rem;">{audio_badge}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 0.25rem;">
+                                <span style="font-size: 0.75rem; opacity: 0.8;">Words: {actual}/{target}</span>
+                                <span style="font-size: 0.75rem;">{feedback_text}</span>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("No deliveries yet. Enable scheduling to receive email digests!")
+            elif response.status_code == 401:
+                st.caption("Login required to view history")
+            else:
+                st.caption("Unable to load delivery history")
+        except Exception as e:
+            st.caption(f"Error loading history")
     
     digest_data = st.session_state['digest']
     
